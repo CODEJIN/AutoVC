@@ -1,0 +1,218 @@
+import numpy as np
+import yaml, os, pickle, librosa, argparse
+from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor as PE
+from threading import Thread
+from random import shuffle
+
+from Audio import melspectrogram, preemphasis
+
+with open('Hyper_Parameter.yaml') as f:
+    hp_Dict = yaml.load(f, Loader=yaml.Loader)
+
+using_Extension = [x.upper() for x in ['.wav', '.m4a', '.flac']]
+top_DB_Dict = {'VCTK': 15, 'VC1': 23, 'Libri': 23, 'CMUA': 60}  # VC1 and Libri is from 'https://github.com/CorentinJ/Real-Time-Voice-Cloning'
+
+
+def Mel_Generate(path, top_db= 60):
+    sig = librosa.core.load(
+        path,
+        sr = hp_Dict['Sound']['Sample_Rate']
+        )[0]
+    sig = preemphasis(sig)
+    sig = librosa.effects.trim(sig, top_db= top_db, frame_length= 32, hop_length= 16)[0] * 0.99
+
+    return np.transpose(melspectrogram(
+        y= sig,
+        num_freq= hp_Dict['Sound']['Spectrogram_Dim'],
+        hop_length= hp_Dict['Sound']['Frame_Shift'],
+        win_length= hp_Dict['Sound']['Frame_Length'],
+        num_mels= hp_Dict['Sound']['Mel_Dim'],
+        sample_rate= hp_Dict['Sound']['Sample_Rate'],
+        max_abs_value= hp_Dict['Sound']['Max_Abs_Mel']
+        ).astype(np.float32))
+
+def Pattern_File_Generate(path, speaker, dataset, file_Prefix='', display_Prefix = ''):
+    new_Pattern_Dict = {
+        'Mel': Mel_Generate(path, top_DB_Dict[dataset]),
+        'Speaker': speaker,
+        'Dataset': dataset,
+        }
+    pickle_Path = '{}.{}.{}.PICKLE'.format(
+        dataset,
+        speaker,
+        os.path.splitext(os.path.basename(path))[0]
+        )
+    pickle_Path = os.path.join(hp_Dict['Train']['Pattern_Path'], pickle_Path).replace("\\", "/")
+    
+    with open(pickle_Path, 'wb') as f:
+        pickle.dump(new_Pattern_Dict, f, protocol=4)
+
+    return True
+            
+def VCTK_Info_Load(vctk_Path):
+    vctk_Wav_Path = os.path.join(vctk_Path, 'wav48').replace('\\', '/')
+    try:
+        with open(os.path.join(vctk_Path, 'VCTK.NonOutlier.txt').replace('\\', '/'), 'r') as f:
+            vctk_Non_Outlier_List = [x.strip() for x in f.readlines()]
+    except:
+        vctk_Non_Outlier_List = None
+
+    vctk_File_Path_List = []
+    for root, _, files in os.walk(vctk_Wav_Path):
+        for file in files:
+            if not vctk_Non_Outlier_List is None and not file in vctk_Non_Outlier_List:
+                continue
+            wav_File_Path = os.path.join(root, file).replace('\\', '/')
+            if not os.path.splitext(wav_File_Path)[1].upper() in using_Extension:
+                continue
+
+            vctk_File_Path_List.append(wav_File_Path)
+    
+    vctk_Speaker_Dict = {
+        path: path.split('/')[-2].upper()
+        for path in vctk_File_Path_List
+        }
+
+    print('VCTK info generated: {}'.format(len(vctk_File_Path_List)))
+    return vctk_File_Path_List, vctk_Speaker_Dict
+
+def VC1_Info_Load(vc1_Path):
+    vc1_File_Path_List = []
+    for root, _, files in os.walk(vc1_Path):
+        for file in files:
+            wav_File_Path = os.path.join(root, file).replace('\\', '/')
+            if not os.path.splitext(wav_File_Path)[1].upper() in using_Extension:
+                continue
+            vc1_File_Path_List.append(wav_File_Path)
+    
+    vc1_Speaker_Dict = {
+        path: path.split('/')[-3].upper()
+        for path in vc1_File_Path_List
+        }
+
+    print('VC1 info generated: {}'.format(len(vc1_File_Path_List)))
+    return vc1_File_Path_List, vc1_Speaker_Dict
+
+def Libri_Info_Load(libri_Path):
+    libri_File_Path_List = []
+    for root, _, files in os.walk(libri_Path):
+        for file in files:
+            wav_File_Path = os.path.join(root, file).replace('\\', '/')
+            if not os.path.splitext(wav_File_Path)[1].upper() in using_Extension:
+                continue
+            libri_File_Path_List.append(wav_File_Path)
+            
+    libri_Speaker_Dict = {
+        path: path.split('/')[-3].upper()
+        for path in libri_File_Path_List
+        }
+
+    print('Libri info generated: {}'.format(len(libri_File_Path_List)))
+    return libri_File_Path_List, libri_Speaker_Dict
+
+def CMUA_Info_Load(cmua_Path):
+    cmua_File_Path_List = []
+    for root, _, files in os.walk(cmua_Path):
+        for file in files:
+            wav_File_Path = os.path.join(root, file).replace('\\', '/')
+            if not os.path.splitext(wav_File_Path)[1].upper() in using_Extension:
+                continue
+            cmua_File_Path_List.append(wav_File_Path)
+            
+    cmua_Speaker_Dict = {
+        path: path.split('/')[-3].split('_')[2].upper()
+        for path in cmua_File_Path_List
+        }
+
+    print('CMUA info generated: {}'.format(len(cmua_File_Path_List)))
+    return cmua_File_Path_List, cmua_Speaker_Dict
+
+def Metadata_Generate():
+    new_Metadata_Dict = {
+        'Spectrogram_Dim': hp_Dict['Sound']['Spectrogram_Dim'],
+        'Mel_Dim': hp_Dict['Sound']['Mel_Dim'],
+        'Frame_Shift': hp_Dict['Sound']['Frame_Shift'],
+        'Frame_Length': hp_Dict['Sound']['Frame_Length'],
+        'Sample_Rate': hp_Dict['Sound']['Sample_Rate'],
+        'Max_Abs_Mel': hp_Dict['Sound']['Max_Abs_Mel'],
+        'File_List': [],        
+        'Mel_Length_Dict': {},
+        'Dataset_Dict': {},
+        'Speaker_Dict': {},
+        'File_List_by_Speaker_Dict': {},
+        }
+
+    for root, _, files in os.walk(hp_Dict['Train']['Pattern_Path']):
+        for file in files:
+            with open(os.path.join(root, file).replace("\\", "/"), "rb") as f:
+                pattern_Dict = pickle.load(f)
+                try:
+                    new_Metadata_Dict['File_List'].append(file)
+                    new_Metadata_Dict['Mel_Length_Dict'][file] = pattern_Dict['Mel'].shape[0]
+                    new_Metadata_Dict['Dataset_Dict'][file] = pattern_Dict['Dataset']
+                    new_Metadata_Dict['Speaker_Dict'][file] = pattern_Dict['Speaker']
+                    if not (pattern_Dict['Dataset'], pattern_Dict['Speaker']) in new_Metadata_Dict['File_List_by_Speaker_Dict'].keys():
+                        new_Metadata_Dict['File_List_by_Speaker_Dict'][pattern_Dict['Dataset'], pattern_Dict['Speaker']] = []
+                    new_Metadata_Dict['File_List_by_Speaker_Dict'][pattern_Dict['Dataset'], pattern_Dict['Speaker']].append(file)
+                except:
+                    print('File \'{}\' is not correct pattern file. This file is ignored.'.format(file))
+                
+    with open(os.path.join(hp_Dict['Train']['Pattern_Path'], hp_Dict['Train']['Metadata_File'].upper()).replace("\\", "/"), 'wb') as f:
+        pickle.dump(new_Metadata_Dict, f, protocol=4)
+
+    print('Metadata generate done.')
+
+if __name__ == '__main__':
+    argParser = argparse.ArgumentParser()
+    argParser.add_argument("-vctk", "--vctk_path", required=False)
+    argParser.add_argument("-vc1", "--vc1_path", required=False)
+    argParser.add_argument("-libri", "--libri_path", required=False)
+    argParser.add_argument("-cmua", "--cmua_path", required=False)
+    argParser.add_argument("-mw", "--max_worker", default= 10, type= int)
+    args = argParser.parse_args()
+    
+    path_List = []
+    speaker_Dict = {}
+    dataset_Dict = {}
+    if not args.vctk_path is None:
+        vctk_File_Path_List, vctk_Speaker_Dict = VCTK_Info_Load(vctk_Path= args.vctk_path)
+        path_List.extend(vctk_File_Path_List)
+        speaker_Dict.update(vctk_Speaker_Dict)
+        dataset_Dict.update({path: 'VCTK' for path in vctk_File_Path_List})
+    if not args.vc1_path is None:
+        vc1_File_Path_List, vc1_Speaker_Dict = VC1_Info_Load(vc1_Path= args.vc1_path)
+        path_List.extend(vc1_File_Path_List)
+        speaker_Dict.update(vc1_Speaker_Dict)
+        dataset_Dict.update({path: 'VC1' for path in vc1_File_Path_List})
+    if not args.libri_path is None:
+        libri_File_Path_List, libri_Speaker_Dict = Libri_Info_Load(libri_Path= args.libri_path)
+        path_List.extend(libri_File_Path_List)
+        speaker_Dict.update(libri_Speaker_Dict)
+        dataset_Dict.update({path: 'Libri' for path in libri_File_Path_List})
+    if not args.cmua_path is None:
+        cmua_File_Path_List, cmua_Speaker_Dict = CMUA_Info_Load(cmua_Path= args.cmua_path)
+        path_List.extend(cmua_File_Path_List)
+        speaker_Dict.update(cmua_Speaker_Dict)
+        dataset_Dict.update({path: 'CMUA' for path in cmua_File_Path_List})
+
+    if len(path_List) == 0:
+        raise ValueError('Total info count must be bigger than 0.')
+    print('Total info generated: {}'.format(len(path_List)))
+    
+    os.makedirs(hp_Dict['Train']['Pattern_Path'], exist_ok= True)
+    total_Generated_Pattern_Count = 0
+    with PE(max_workers = args.max_worker) as pe:
+        for _ in tqdm(
+            pe.map(
+                lambda params: Pattern_File_Generate(*params),
+                [(path, speaker_Dict[path], dataset_Dict[path]) for path in path_List]
+                ),
+            desc= '[Pattern]',
+            total= len(path_List)
+            ):
+            pass
+
+    Metadata_Generate()
+
+# python Pattern_Generator.py -vctk D:\Pattern\ENG\VCTK -vc1 C:\Users\Heejo\Downloads\Vox1 -libri C:\Users\Heejo\Downloads\LibriTTS -cmua D:\Pattern\ENG\CMUA
