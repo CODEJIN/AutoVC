@@ -1,0 +1,3 @@
+[submodule "Style_Encoder"]
+	path = Style_Encoder
+	url = https://github.com/CODEJIN/Speaker_Embedding_Torch
