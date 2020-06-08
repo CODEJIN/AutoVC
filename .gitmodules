@@ -1,3 +1,6 @@
 [submodule "Style_Encoder"]
 	path = Style_Encoder
 	url = https://github.com/CODEJIN/Speaker_Embedding_Torch
+[submodule "PWGAN"]
+	path = PWGAN
+	url = https://github.com/CODEJIN/PWGAN_Torch
