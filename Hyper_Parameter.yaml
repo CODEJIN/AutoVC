@@ -18,8 +18,13 @@ Content_Encoder:
 Style_Encoder:
     Embedding_Size: 256
     LSTM:
-        Sizes: 768
-        Stacks: 2    
+        Sizes: 256
+        Stacks: 3
+    Inference:
+        Samples: 5
+        Slice_Length: 64
+        Overlap_Length: 32
+    Checkpoint_Path: 'D:/SE.Results/Checkpoint/S_100000.pkl'
     
 Decoder:
     Pre_LSTM:
@@ -36,39 +41,53 @@ Postnet:
     Channels: [512, 512, 512, 512]
     Kernel_Sizes: [5, 5, 5, 5]
 
+WaveNet:
+    Residual_Channels: 64
+    ResConvGLU:
+        Blocks: 3
+        Stacks_in_Block: 10
+        Gate_Channels: 128
+        Kernel_Size: 3
+        Skip_Channels: 64
+        Dropout_Rate: 0.0
+    Upsample:
+        Scales: [4, 4, 4, 4]
+        Pad: 2
+    Checkpoint_Path: 'D:/GoogleDrive_PWGAN/Colab_Test/PWGAN_Torch/Results/Checkpoint/S_400000.pkl'  # If nothing, null
+
+
 Train:
-    Use_Pattern_Cache: true
-    Pattern_Path: 'C:/Pattern/AutoVC.Pattern'
-    Metadata_File: 'METADATA.PICKLE'
-    Num_Workers: 2
-    Batch_Size: 6    
-    Max_Pattern_Queue: 100          
+    Use_Pattern_Cache: false
+    Train_Pattern:
+        Path: 'C:/Pattern/AutoVC.Pattern/Train'
+        Metadata_File: 'METADATA.PICKLE'
+        Use_Length:
+            Min: 50
+            Max: 650
+        Accumulated_Dataset_Epoch: 10   # This is to prevent slow down from torch.utils.data.DataLoader when dataset have small pattens by epoch.
+    Eval_Pattern:
+        Path: 'C:/Pattern/AutoVC.Pattern/Eval'
+        Metadata_File: 'METADATA.PICKLE'
+    Num_Workers: 2  # Each epoch is based on the number of speakers, so using a lot of workers slows down the pattern generating speed.
+    Batch_Size: 16
     Learning_Rate:
-        Discriminator: 
-            Initial: 5.0e-5
-            Epsilon: 1.0e-6
-            Decay_Step: 200000
-            Decay_Rate: 0.5            
-        Generator : 
-            Initial: 1.0e-4
-            Epsilon: 1.0e-6
-            Decay_Step: 200000
-            Decay_Rate: 0.5
-    Adversarial_Weight: 4.0
-    Discriminator_Delay: 100000
+        Initial: 1.0e-3
+        Epsilon: 1.0e-7
+        Decay_Step: 50000
+        Decay_Rate: 0.5
     ADAM:
         Beta1: 0.9
         Beta2: 0.999
         Epsilon: 1.0e-7
-    Generator_Gradient_Norm: 10.0
-    Discriminator_Gradient_Norm: 1.0
+    Gradient_Norm: 1.0
     Max_Step: 400000
-    Checkpoint_Save_Interval: 5000
+    Checkpoint_Save_Interval: 1000
     Logging_Interval: 100
     Evaluation_Interval: 1000
+    Inference_Interval: 1000
     Initial_Inference: false
 
-Inference_Path: 'D:/PWGAN.LJFV.Results/Inference'
-Checkpoint_Path: 'D:/PWGAN.LJFV.Results/Checkpoint'
-Log_Path: 'D:/PWGAN.LJFV.Results/Log'
+Inference_Path: 'D:/AutoVC.Results/Inference'
+Checkpoint_Path: 'D:/AutoVC.Results/Checkpoint'
+Log_Path: 'D:/AutoVC.Results/Log'
 Device: '0'

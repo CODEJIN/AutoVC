@@ -11,7 +11,7 @@ with open('Hyper_Parameter.yaml') as f:
     hp_Dict = yaml.load(f, Loader=yaml.Loader)
 
 using_Extension = [x.upper() for x in ['.wav', '.m4a', '.flac']]
-top_DB_Dict = {'VCTK': 15, 'VC1': 23, 'Libri': 23, 'CMUA': 60}  # VC1 and Libri is from 'https://github.com/CorentinJ/Real-Time-Voice-Cloning'
+top_DB_Dict = {'VCTK': 15, 'VC1': 23, 'VC2': 23, 'Libri': 23, 'CMUA': 60}  # VC1 and Libri is from 'https://github.com/CorentinJ/Real-Time-Voice-Cloning'
 
 
 def Mel_Generate(path, top_db= 60):
@@ -32,23 +32,33 @@ def Mel_Generate(path, top_db= 60):
         max_abs_value= hp_Dict['Sound']['Max_Abs_Mel']
         ).astype(np.float32))
 
-def Pattern_File_Generate(path, speaker, dataset, file_Prefix='', display_Prefix = ''):
-    new_Pattern_Dict = {
-        'Mel': Mel_Generate(path, top_DB_Dict[dataset]),
-        'Speaker': speaker,
-        'Dataset': dataset,
-        }
-    pickle_Path = '{}.{}.{}.PICKLE'.format(
+def Pattern_File_Generate(path, speaker, dataset, tag= '', eval= False):
+    pattern_Path = hp_Dict['Train']['Eval_Pattern' if eval else 'Train_Pattern']['Path']
+
+    pickle_Path = '{}.{}{}.{}.PICKLE'.format(
         dataset,
         speaker,
-        os.path.splitext(os.path.basename(path))[0]
+        '.{}'.format(tag) if tag != '' else tag,
+        os.path.splitext(os.path.basename(path))[0]        
         )
-    pickle_Path = os.path.join(hp_Dict['Train']['Pattern_Path'], pickle_Path).replace("\\", "/")
+    pickle_Path = os.path.join(pattern_Path, dataset, pickle_Path).replace("\\", "/")
+
+    if os.path.exists(pickle_Path):
+        return
+
+    os.makedirs(os.path.join(pattern_Path, dataset).replace('\\', '/'), exist_ok= True)    
+    try:
+        new_Pattern_Dict = {
+            'Mel': Mel_Generate(path, top_DB_Dict[dataset]),
+            'Speaker': speaker,
+            'Dataset': dataset,
+            }
+    except Exception as e:
+        print('Error: {} in {}'.format(e, path))
+        return
     
     with open(pickle_Path, 'wb') as f:
         pickle.dump(new_Pattern_Dict, f, protocol=4)
-
-    return True
             
 def VCTK_Info_Load(vctk_Path):
     vctk_Wav_Path = os.path.join(vctk_Path, 'wav48').replace('\\', '/')
@@ -94,6 +104,24 @@ def VC1_Info_Load(vc1_Path):
     print('VC1 info generated: {}'.format(len(vc1_File_Path_List)))
     return vc1_File_Path_List, vc1_Speaker_Dict
 
+def VC2_Info_Load(vc2_Path):
+    vc2_File_Path_List = []
+    for root, _, files in os.walk(vc2_Path):
+        for file in files:
+            wav_File_Path = os.path.join(root, file).replace('\\', '/')
+            if not os.path.splitext(wav_File_Path)[1].upper() in using_Extension:
+                continue
+            vc2_File_Path_List.append(wav_File_Path)
+    
+    vc2_Speaker_Dict = {
+        path: path.split('/')[-3].upper()
+        for path in vc2_File_Path_List
+        }
+
+    print('VC2 info generated: {}'.format(len(vc2_File_Path_List)))
+    return vc2_File_Path_List, vc2_Speaker_Dict
+
+
 def Libri_Info_Load(libri_Path):
     libri_File_Path_List = []
     for root, _, files in os.walk(libri_Path):
@@ -128,7 +156,9 @@ def CMUA_Info_Load(cmua_Path):
     print('CMUA info generated: {}'.format(len(cmua_File_Path_List)))
     return cmua_File_Path_List, cmua_Speaker_Dict
 
-def Metadata_Generate():
+def Metadata_Generate(eval= False):
+    pattern_Path = hp_Dict['Train']['Eval_Pattern' if eval else 'Train_Pattern']['Path']
+
     new_Metadata_Dict = {
         'Spectrogram_Dim': hp_Dict['Sound']['Spectrogram_Dim'],
         'Mel_Dim': hp_Dict['Sound']['Mel_Dim'],
@@ -143,7 +173,7 @@ def Metadata_Generate():
         'File_List_by_Speaker_Dict': {},
         }
 
-    for root, _, files in os.walk(hp_Dict['Train']['Pattern_Path']):
+    for root, _, files in os.walk(pattern_Path):
         for file in files:
             with open(os.path.join(root, file).replace("\\", "/"), "rb") as f:
                 pattern_Dict = pickle.load(f)
@@ -158,7 +188,7 @@ def Metadata_Generate():
                 except:
                     print('File \'{}\' is not correct pattern file. This file is ignored.'.format(file))
                 
-    with open(os.path.join(hp_Dict['Train']['Pattern_Path'], hp_Dict['Train']['Metadata_File'].upper()).replace("\\", "/"), 'wb') as f:
+    with open(os.path.join(pattern_Path, hp_Dict['Train']['Train_Pattern']['Metadata_File'].upper()).replace("\\", "/"), 'wb') as f:
         pickle.dump(new_Metadata_Dict, f, protocol=4)
 
     print('Metadata generate done.')
@@ -167,52 +197,78 @@ if __name__ == '__main__':
     argParser = argparse.ArgumentParser()
     argParser.add_argument("-vctk", "--vctk_path", required=False)
     argParser.add_argument("-vc1", "--vc1_path", required=False)
+    argParser.add_argument("-vc2", "--vc2_path", required=False)
     argParser.add_argument("-libri", "--libri_path", required=False)
     argParser.add_argument("-cmua", "--cmua_path", required=False)
+
+    argParser.add_argument("-vc1t", "--vc1_test_path", required=False)
+
     argParser.add_argument("-mw", "--max_worker", default= 10, type= int)
     args = argParser.parse_args()
     
     path_List = []
     speaker_Dict = {}
     dataset_Dict = {}
+    tag_Dict = {}
     if not args.vctk_path is None:
         vctk_File_Path_List, vctk_Speaker_Dict = VCTK_Info_Load(vctk_Path= args.vctk_path)
         path_List.extend(vctk_File_Path_List)
         speaker_Dict.update(vctk_Speaker_Dict)
         dataset_Dict.update({path: 'VCTK' for path in vctk_File_Path_List})
+        tag_Dict.update({path: '' for path in vctk_File_Path_List})
     if not args.vc1_path is None:
         vc1_File_Path_List, vc1_Speaker_Dict = VC1_Info_Load(vc1_Path= args.vc1_path)
         path_List.extend(vc1_File_Path_List)
         speaker_Dict.update(vc1_Speaker_Dict)
         dataset_Dict.update({path: 'VC1' for path in vc1_File_Path_List})
+        tag_Dict.update({path: '{}'.format(path.split('/')[-2]) for path in vc1_File_Path_List})
+    if not args.vc2_path is None:
+        vc2_File_Path_List, vc2_Speaker_Dict = VC2_Info_Load(vc2_Path= args.vc2_path)
+        path_List.extend(vc2_File_Path_List)
+        speaker_Dict.update(vc2_Speaker_Dict)
+        dataset_Dict.update({path: 'VC2' for path in vc2_File_Path_List})
+        tag_Dict.update({path: '{}'.format(path.split('/')[-2]) for path in vc2_File_Path_List})
     if not args.libri_path is None:
         libri_File_Path_List, libri_Speaker_Dict = Libri_Info_Load(libri_Path= args.libri_path)
         path_List.extend(libri_File_Path_List)
         speaker_Dict.update(libri_Speaker_Dict)
         dataset_Dict.update({path: 'Libri' for path in libri_File_Path_List})
+        tag_Dict.update({path: '' for path in libri_File_Path_List})
     if not args.cmua_path is None:
         cmua_File_Path_List, cmua_Speaker_Dict = CMUA_Info_Load(cmua_Path= args.cmua_path)
         path_List.extend(cmua_File_Path_List)
         speaker_Dict.update(cmua_Speaker_Dict)
         dataset_Dict.update({path: 'CMUA' for path in cmua_File_Path_List})
+        tag_Dict.update({path: '' for path in cmua_File_Path_List})
 
     if len(path_List) == 0:
         raise ValueError('Total info count must be bigger than 0.')
     print('Total info generated: {}'.format(len(path_List)))
-    
-    os.makedirs(hp_Dict['Train']['Pattern_Path'], exist_ok= True)
-    total_Generated_Pattern_Count = 0
+
     with PE(max_workers = args.max_worker) as pe:
         for _ in tqdm(
             pe.map(
                 lambda params: Pattern_File_Generate(*params),
-                [(path, speaker_Dict[path], dataset_Dict[path]) for path in path_List]
+                [(path, speaker_Dict[path], dataset_Dict[path], tag_Dict[path], False) for path in path_List]
                 ),
-            desc= '[Pattern]',
             total= len(path_List)
             ):
             pass
-
     Metadata_Generate()
 
-# python Pattern_Generator.py -vctk D:\Pattern\ENG\VCTK -vc1 C:\Users\Heejo\Downloads\Vox1 -libri C:\Users\Heejo\Downloads\LibriTTS -cmua D:\Pattern\ENG\CMUA
+    if not args.vc1_test_path is None:
+        path_List, speaker_Dict = VC1_Info_Load(vc1_Path= args.vc1_test_path)
+        dataset_Dict = {path: 'VC1' for path in path_List}
+        tag_Dict = {path: '.{}'.format(path.split('/')[-2]) for path in path_List}
+
+        with PE(max_workers = args.max_worker) as pe:
+            for _ in tqdm(
+                pe.map(
+                    lambda params: Pattern_File_Generate(*params),
+                    [(path, speaker_Dict[path], dataset_Dict[path], tag_Dict[path], True) for path in path_List]
+                    ),
+                total= len(path_List)
+                ):
+                pass
+
+        Metadata_Generate(eval= True)
