@@ -21,14 +21,15 @@ Style_Encoder:
         Sizes: 256
         Stacks: 3
     Inference:
-        Samples: 5
-        Slice_Length: 64
-        Overlap_Length: 32
+        Samples: 1
+        Slice_Length: 160
+        Overlap_Length: 0
     Checkpoint_Path: 'D:/SE.Results/Checkpoint/S_100000.pkl'
     
 Decoder:
+    # In paper here is pre conv, but there is no conv in official code.
     Pre_LSTM:
-        Sizes: 1024
+        Sizes: 512 # In code 512, paper 1024
         Stacks: 1
     Conv:
         Channels: [512, 512, 512]
@@ -60,32 +61,33 @@ Train:
     Use_Pattern_Cache: false
     Train_Pattern:
         Path: 'C:/Pattern/AutoVC.Pattern/Train'
-        Metadata_File: 'METADATA.PICKLE'
-        Use_Length:
-            Min: 50
-            Max: 650
-        Accumulated_Dataset_Epoch: 10   # This is to prevent slow down from torch.utils.data.DataLoader when dataset have small pattens by epoch.
+        Metadata_File: 'METADATA.VCTK_CMUA.PICKLE'
+        Mel_Length: 128     # This must be a multiple of Content_Encoder/Frequency
+        Accumulated_Dataset_Epoch: 100   # This is to prevent slow down from torch.utils.data.DataLoader when speaker is small.
     Eval_Pattern:
         Path: 'C:/Pattern/AutoVC.Pattern/Eval'
         Metadata_File: 'METADATA.PICKLE'
-    Num_Workers: 2  # Each epoch is based on the number of speakers, so using a lot of workers slows down the pattern generating speed.
-    Batch_Size: 16
+    Num_Workers: 2
+    Batch_Size: 2
+    Loss_Weight:
+        Pre_Mel: 1.0
+        Post_Mel: 1.0
+        Content: 1.0
     Learning_Rate:
         Initial: 1.0e-3
-        Epsilon: 1.0e-7
-        Decay_Step: 50000
+        Decay_Step: 200000
         Decay_Rate: 0.5
     ADAM:
         Beta1: 0.9
         Beta2: 0.999
         Epsilon: 1.0e-7
-    Gradient_Norm: 1.0
+    Gradient_Norm: 10.0
     Max_Step: 400000
     Checkpoint_Save_Interval: 1000
     Logging_Interval: 100
     Evaluation_Interval: 1000
     Inference_Interval: 1000
-    Initial_Inference: false
+    Initial_Inference: true
 
 Inference_Path: 'D:/AutoVC.Results/Inference'
 Checkpoint_Path: 'D:/AutoVC.Results/Checkpoint'

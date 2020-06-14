@@ -55,7 +55,7 @@ class Content_Encoder(torch.nn.Module):
             styles.unsqueeze(2).expand(-1, -1, mels.size(2))
             ], dim= 1)
         
-        x = self.layer_Dict['Conv'](x)  # [Batch, Conv_dim, Time]        
+        x = self.layer_Dict['Conv'](x)  # [Batch, Conv_dim, Time]
         x = self.layer_Dict['BiLSTM'](x.transpose(2, 1))[0].transpose(2, 1)   # [Batch, LSTM_dim * 2, Time]
         x_Forward, x_Backward = x.split(x.size(1) // 2, dim= 1) # [Batch, LSTM_dim, Time] * 2        
         

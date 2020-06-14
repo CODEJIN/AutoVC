@@ -4,13 +4,11 @@ import logging, yaml, os, sys, argparse, time
 from tqdm import tqdm
 from collections import defaultdict
 from tensorboardX import SummaryWriter
-import matplotlib
-matplotlib.use('agg')
-matplotlib.rcParams['agg.path.chunksize'] = 10000
+# import matplotlib
+# matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 from random import sample
-from sklearn.manifold import TSNE
 
 from Modules import Content_Encoder, Decoder
 from Datasets import Train_Dataset, Dev_Dataset, Inference_Dataset, Collater, Inference_Collater
@@ -34,7 +32,10 @@ else:
 
 logging.basicConfig(
         level=logging.INFO, stream=sys.stdout,
-        format="%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s")
+        format="%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s"
+        )
+
+torch.autograd.set_detect_anomaly(True)
 
 class Trainer:
     def __init__(self, steps= 0):
@@ -55,15 +56,14 @@ class Trainer:
 
         if not hp_Dict['WaveNet']['Checkpoint_Path'] is None:
             self.PWGAN_Load_Checkpoint()
-
-        if self.steps > 0:
-            self.Load_Checkpoint()
+        
+        self.Load_Checkpoint()
 
     def Datset_Generate(self):
         train_Dataset = Train_Dataset()
         dev_Dataset = Dev_Dataset()
         inference_Dataset = Inference_Dataset()
-        logging.info('The number of train speakers = {}.'.format(len(train_Dataset)))
+        logging.info('The number of train speakers = {}.'.format(len(train_Dataset) // hp_Dict['Train']['Train_Pattern']['Accumulated_Dataset_Epoch']))
         logging.info('The number of development speakers = {}.'.format(len(dev_Dataset)))
         logging.info('The number of inference patterns = {}.'.format(len(inference_Dataset)))
 
@@ -89,7 +89,7 @@ class Trainer:
             )
         self.dataLoader_Dict['Inference'] = torch.utils.data.DataLoader(
             dataset= inference_Dataset,
-            shuffle= True,
+            shuffle= False,
             collate_fn= inference_Collater,
             batch_size= hp_Dict['Train']['Batch_Size'],
             num_workers= hp_Dict['Train']['Num_Workers'],
@@ -114,7 +114,8 @@ class Trainer:
         self.optimizer = RAdam(
             params= list(self.model_Dict['Content_Encoder'].parameters()) + list(self.model_Dict['Decoder'].parameters()),
             lr= hp_Dict['Train']['Learning_Rate']['Initial'],
-            eps= hp_Dict['Train']['Learning_Rate']['Epsilon'],
+            betas=(hp_Dict['Train']['ADAM']['Beta1'], hp_Dict['Train']['ADAM']['Beta2']),
+            eps= hp_Dict['Train']['ADAM']['Epsilon'],
             )
         self.scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer= self.optimizer,
@@ -134,11 +135,12 @@ class Trainer:
         content_Style_Mels = content_Style_Mels.to(device)
         style_Mels = style_Mels.to(device)
 
-        content_Styles = self.model_Dict['Style_Encoder'](content_Style_Mels)
-        styles = self.model_Dict['Style_Encoder'](style_Mels)
-        content_Styles = Normalize(content_Styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
-        styles = Normalize(styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
-
+        with torch.no_grad():
+            content_Styles = self.model_Dict['Style_Encoder'](content_Style_Mels)
+            styles = self.model_Dict['Style_Encoder'](style_Mels)
+            content_Styles = Normalize(content_Styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
+            styles = Normalize(styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
+        
         contents = self.model_Dict['Content_Encoder'](
             mels= content_Mels,
             styles= content_Styles
@@ -148,8 +150,9 @@ class Trainer:
             styles= styles
             )
 
-        recontructed_Styles = self.model_Dict['Style_Encoder'](post_Mels[:, :, :hp_Dict['Style_Encoder']['Inference']['Slice_Length']])        
-        recontructed_Styles = torch.nn.functional.normalize(recontructed_Styles, p=2, dim= 1)
+        with torch.no_grad():
+            recontructed_Styles = self.model_Dict['Style_Encoder'](post_Mels[:, :, :hp_Dict['Style_Encoder']['Inference']['Slice_Length']])        
+            recontructed_Styles = torch.nn.functional.normalize(recontructed_Styles, p=2, dim= 1)
         reconstructed_Contents = self.model_Dict['Content_Encoder'](
             mels= post_Mels,
             styles= recontructed_Styles
@@ -158,17 +161,19 @@ class Trainer:
         loss_Dict['Pre_Reconstructed'] = self.criterion_Dict['MSE'](pre_Mels, content_Mels)
         loss_Dict['Post_Reconstructed'] = self.criterion_Dict['MSE'](post_Mels, content_Mels)
         loss_Dict['Content'] = self.criterion_Dict['MAE'](reconstructed_Contents, contents)
-        loss_Dict['Total'] = loss_Dict['Pre_Reconstructed'] + loss_Dict['Post_Reconstructed'] + loss_Dict['Content']
+        loss_Dict['Total'] = \
+            hp_Dict['Train']['Loss_Weight']['Pre_Mel'] * loss_Dict['Pre_Reconstructed'] + \
+            hp_Dict['Train']['Loss_Weight']['Post_Mel'] * loss_Dict['Post_Reconstructed'] + \
+            hp_Dict['Train']['Loss_Weight']['Content'] * loss_Dict['Content']
 
-        self.optimizer.zero_grad()
-        loss_Dict['Total'].backward()
+        self.optimizer.zero_grad()                
+        loss_Dict['Total'].backward()        
         torch.nn.utils.clip_grad_norm_(
             parameters= list(self.model_Dict['Content_Encoder'].parameters()) + list(self.model_Dict['Decoder'].parameters()),
             max_norm= hp_Dict['Train']['Gradient_Norm']
-            )
+            )        
         self.optimizer.step()
         self.scheduler.step()
-          
         self.steps += 1
         self.tqdm.update(1)
 
@@ -201,8 +206,7 @@ class Trainer:
 
         self.epochs += hp_Dict['Train']['Train_Pattern']['Accumulated_Dataset_Epoch']
 
-    
-    @torch.no_grad()
+    @torch.no_grad()    
     def Evaluation_Step(self, content_Mels, content_Style_Mels, style_Mels):
         loss_Dict = {}
 
@@ -237,7 +241,7 @@ class Trainer:
 
         for tag, loss in loss_Dict.items():
             self.loss_Dict['Evaluation'][tag] += loss
-
+    
     def Evaluation_Epoch(self):
         logging.info('(Steps: {}) Start evaluation.'.format(self.steps))
 
@@ -246,6 +250,12 @@ class Trainer:
 
         for step, (content_Mels, content_Style_Mels, style_Mels) in tqdm(enumerate(self.dataLoader_Dict['Dev'], 1), desc='[Evaluation]'):
             self.Evaluation_Step(content_Mels, content_Style_Mels, style_Mels)
+            # try:
+            #     self.Evaluation_Step(content_Mels, content_Style_Mels, style_Mels)
+            # except Exception as e:
+            #     print()
+            #     print(e)
+            #     print('{}\t{}\t{}'.format(content_Mels.shape, content_Style_Mels.shape, style_Mels.shape))
 
         self.loss_Dict['Evaluation'] = {
             tag: loss / step
@@ -259,7 +269,7 @@ class Trainer:
 
 
     @torch.no_grad()
-    def Inference_Step(self, content_Mels, content_Style_Mels, style_Mels, content_Labels, style_Labels, start_Index= 0):
+    def Inference_Step(self, content_Mels, content_Style_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels, start_Index= 0):
         content_Mels = content_Mels.to(device)
         content_Style_Mels = content_Style_Mels.to(device)
         style_Mels = style_Mels.to(device)
@@ -280,48 +290,53 @@ class Trainer:
 
         os.makedirs(os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps)).replace("\\", "/"), exist_ok= True)
 
-        for index, (content_Mel, post_Mel) in enumerate(zip(
+        for index, (content_Mel, post_Mel, content_Mel_Length, content_Label, style_Label) in enumerate(zip(
             content_Mels.cpu().numpy(),
-            post_Mels.cpu().numpy()
+            post_Mels.cpu().numpy(),
+            content_Mel_Lengths,
+            content_Labels,
+            style_Labels
             )):
             new_Figure = plt.figure(figsize=(16, 8 * 2), dpi=100)
             plt.subplot(211)
-            plt.imshow(content_Mel, aspect='auto', origin='lower')
-            plt.title('Original    Index: {}'.format(index + start_Index))            
+            plt.imshow(content_Mel[:, :content_Mel_Length], aspect='auto', origin='lower')
+            plt.title('Original    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, content_Label, style_Label))            
+            plt.colorbar()
             plt.subplot(212)
-            plt.imshow(post_Mel, aspect='auto', origin='lower')
-            plt.title('Conversion    Index: {}'.format(index + start_Index))
+            plt.imshow(post_Mel[:, :content_Mel_Length], aspect='auto', origin='lower')
+            plt.title('Conversion    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, content_Label, style_Label))
+            plt.colorbar()
             plt.tight_layout()
             plt.savefig(
                 os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), 'Step-{}.IDX_{}.PNG'.format(self.steps, index + start_Index)).replace("\\", "/")
                 )
             plt.close(new_Figure)
 
-            if 'PWGAN' in self.model_Dict.keys():
-                noises = torch.randn(post_Mels.size(0), post_Mels.size(2) * hp_Dict['Sound']['Frame_Shift']).to(device)                
-                post_Mels = torch.nn.functional.pad(
-                    post_Mels,
-                    pad= (hp_Dict['WaveNet']['Upsample']['Pad'], hp_Dict['WaveNet']['Upsample']['Pad']),
-                    mode= 'replicate'
-                    )
-                content_Mels = torch.nn.functional.pad(
-                    content_Mels,
-                    pad= (hp_Dict['WaveNet']['Upsample']['Pad'], hp_Dict['WaveNet']['Upsample']['Pad']),
-                    mode= 'replicate'
-                    )
+        if 'PWGAN' in self.model_Dict.keys():
+            noises = torch.randn(post_Mels.size(0), post_Mels.size(2) * hp_Dict['Sound']['Frame_Shift']).to(device)                
+            post_Mels = torch.nn.functional.pad(
+                post_Mels,
+                pad= (hp_Dict['WaveNet']['Upsample']['Pad'], hp_Dict['WaveNet']['Upsample']['Pad']),
+                mode= 'replicate'
+                )
+            content_Mels = torch.nn.functional.pad(
+                content_Mels,
+                pad= (hp_Dict['WaveNet']['Upsample']['Pad'], hp_Dict['WaveNet']['Upsample']['Pad']),
+                mode= 'replicate'
+                )
 
-                for audio in self.model_Dict['PWGAN'](noises, post_Mels).cpu().numpy():
-                    wavfile.write(
-                        filename= os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), 'Step-{}.IDX_{}.Conversion.WAV'.format(self.steps, index + start_Index)).replace("\\", "/"),
-                        data= (audio * 32767.5).astype(np.int16),
-                        rate= hp_Dict['Sound']['Sample_Rate']
-                        )
-                for audio in self.model_Dict['PWGAN'](noises, content_Mels).cpu().numpy():
-                    wavfile.write(
-                        filename= os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), 'Step-{}.IDX_{}.Original.WAV'.format(self.steps, index + start_Index)).replace("\\", "/"),
-                        data= (audio * 32767.5).astype(np.int16),
-                        rate= hp_Dict['Sound']['Sample_Rate']
-                        )
+            for index, (audio, mel_Length) in enumerate(zip(self.model_Dict['PWGAN'](noises, post_Mels).cpu().numpy(), content_Mel_Lengths)):
+                wavfile.write(
+                    filename= os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), 'Step-{}.Conversion.IDX_{}.WAV'.format(self.steps, index + start_Index)).replace("\\", "/"),
+                    data= (audio[:mel_Length * hp_Dict['Sound']['Frame_Shift']] * 32767.5).astype(np.int16),
+                    rate= hp_Dict['Sound']['Sample_Rate']
+                    )
+            for index, audio in enumerate(self.model_Dict['PWGAN'](noises, content_Mels).cpu().numpy()):
+                wavfile.write(
+                    filename= os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), 'Step-{}.Original.IDX_{}.WAV'.format(self.steps, index + start_Index)).replace("\\", "/"),
+                    data= (audio[:mel_Length * hp_Dict['Sound']['Frame_Shift']] * 32767.5).astype(np.int16),
+                    rate= hp_Dict['Sound']['Sample_Rate']
+                    )
 
     def Inference_Epoch(self):
         logging.info('(Steps: {}) Start inference.'.format(self.steps))
@@ -329,8 +344,8 @@ class Trainer:
         for model in self.model_Dict.values():
             model.eval()
 
-        for step, (content_Mels, content_Style_Mels, style_Mels, content_Labels, style_Labels) in tqdm(enumerate(self.dataLoader_Dict['Inference']), desc='[Inference]'):
-            self.Inference_Step(content_Mels, content_Style_Mels, style_Mels, content_Labels, style_Labels, start_Index= step * hp_Dict['Train']['Batch_Size'])
+        for step, (content_Mels, content_Style_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels) in tqdm(enumerate(self.dataLoader_Dict['Inference']), desc='[Inference]'):
+            self.Inference_Step(content_Mels, content_Style_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels, start_Index= step * hp_Dict['Train']['Batch_Size'])
 
         for model in self.model_Dict.values():
             model.train()
@@ -346,10 +361,20 @@ class Trainer:
         logging.info('Speaker embedding checkpoint \'{}\' loaded.'.format(hp_Dict['Style_Encoder']['Checkpoint_Path']))
 
     def Load_Checkpoint(self):
-        state_Dict = torch.load(
-            os.path.join(hp_Dict['Checkpoint_Path'], 'S_{}.pt'.format(self.steps).replace('\\', '/')),
-            map_location= 'cpu'
-            )
+        if self.steps == 0:
+            path = None
+            for root, _, files in os.walk(hp_Dict['Checkpoint_Path']):
+                path = max(
+                    [os.path.join(root, file).replace('\\', '/') for file in files],
+                    key = os.path.getctime
+                    )
+                break
+            if path is None:
+                return  # Initial training
+        else:
+            path = os.path.join(hp_Dict['Checkpoint_Path'], 'S_{}.pt'.format(self.steps).replace('\\', '/'))
+
+        state_Dict = torch.load(path, map_location= 'cpu')
         self.model_Dict['Content_Encoder'].load_state_dict(state_Dict['Model']['Content_Encoder'])
         self.model_Dict['Decoder'].load_state_dict(state_Dict['Model']['Decoder'])        
         self.optimizer.load_state_dict(state_Dict['Optimizer'])
@@ -424,5 +449,5 @@ if __name__ == '__main__':
     argParser.add_argument('-s', '--steps', default= 0, type= int)
     args = argParser.parse_args()
     
-    new_Trainer = Trainer(steps= args.steps)    
+    new_Trainer = Trainer(steps= args.steps)
     new_Trainer.Train()

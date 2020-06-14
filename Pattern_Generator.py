@@ -178,6 +178,9 @@ def Metadata_Generate(eval= False):
             with open(os.path.join(root, file).replace("\\", "/"), "rb") as f:
                 pattern_Dict = pickle.load(f)
                 try:
+                    if not all([key in ('Mel', 'Speaker', 'Dataset') for key in pattern_Dict.key()]):
+                        continue
+
                     new_Metadata_Dict['File_List'].append(file)
                     new_Metadata_Dict['Mel_Length_Dict'][file] = pattern_Dict['Mel'].shape[0]
                     new_Metadata_Dict['Dataset_Dict'][file] = pattern_Dict['Dataset']
@@ -192,6 +195,37 @@ def Metadata_Generate(eval= False):
         pickle.dump(new_Metadata_Dict, f, protocol=4)
 
     print('Metadata generate done.')
+
+def Metadata_Subset_Generate(base_Metadata_Path, subset_Metadata_Name, use_Datsets):
+    assert os.path.basename(base_Metadata_Path) != subset_Metadata_Name, 'Subset metadata name must be different from base metadata name.'
+
+    metadata_Dict = pickle.load(open(base_Metadata_Path, 'rb'))
+
+    metadata_Dict['File_List'] = [
+        file for file in metadata_Dict['File_List']
+        if metadata_Dict['Dataset_Dict'][file] in use_Datsets
+        ]
+    metadata_Dict['Mel_Length_Dict'] = {
+        file: length for file, length in metadata_Dict['Mel_Length_Dict'].items()
+        if metadata_Dict['Dataset_Dict'][file] in use_Datsets
+        }
+    metadata_Dict['Speaker_Dict'] = {
+        file: speaker for file, speaker in metadata_Dict['Speaker_Dict'].items()
+        if metadata_Dict['Dataset_Dict'][file] in use_Datsets
+        }
+    metadata_Dict['File_List_by_Speaker_Dict'] = {
+        (dataset, speaker): file_List for (dataset, speaker), file_List in metadata_Dict['File_List_by_Speaker_Dict'].items()
+        if dataset in use_Datsets
+        }
+    metadata_Dict['Dataset_Dict'] = {
+        file: dataset for file, dataset in metadata_Dict['Dataset_Dict'].items()
+        if metadata_Dict['Dataset_Dict'][file] in use_Datsets
+        }
+
+    with open(os.path.join(os.path.dirname(base_Metadata_Path), subset_Metadata_Name).replace("\\", "/"), 'wb') as f:
+        pickle.dump(metadata_Dict, f, protocol=4)
+
+    print('Metadata subset generate done.')
 
 if __name__ == '__main__':
     argParser = argparse.ArgumentParser()

@@ -20,10 +20,7 @@ class Train_Dataset(torch.utils.data.Dataset):
         for (dataset, speaker), files in metadata_Dict['File_List_by_Speaker_Dict'].items():
             files = [
                 path for path in files
-                if (
-                    metadata_Dict['Mel_Length_Dict'][path] > hp_Dict['Train']['Train_Pattern']['Use_Length']['Min'] and
-                    metadata_Dict['Mel_Length_Dict'][path] < hp_Dict['Train']['Train_Pattern']['Use_Length']['Max']
-                    )
+                if metadata_Dict['Mel_Length_Dict'][path] >= hp_Dict['Train']['Train_Pattern']['Mel_Length']
                 ]
             if len(files) > 1:
                 self.file_List_by_Speaker_Dict[dataset, speaker] = files
@@ -103,8 +100,8 @@ class Inference_Dataset(torch.utils.data.Dataset):
             return self.cache_Dict[idx]
         
         content_Label, content_Path, style_Label, style_Path = self.pattern_List[idx]
-        content_Mel = Mel_Generate(content_Path, 60)
-        style_Mel = Mel_Generate(style_Path, 60)
+        content_Mel = Mel_Generate(content_Path, 15)
+        style_Mel = Mel_Generate(style_Path, 15)
         pattern = content_Mel, style_Mel, content_Label, style_Label
 
         if hp_Dict['Train']['Use_Pattern_Cache']:
@@ -129,27 +126,36 @@ class Collater:
 
         return content_Mels, content_Style_Mels, style_Mels
 
-class Inference_Collater(Collater):
+class Inference_Collater:
     def __call__(self, batch):
-        content_Mels, content_Style_Mels, style_Mels = super(Inference_Collater, self).__call__([
-            (content_Mel, style_Mel)
-            for content_Mel, style_Mel, _, _ in batch
-            ])        
-        content_Labels, style_Labels = zip(*[
-            (content_Label, style_Label)
-            for _, _, content_Label, style_Label in batch
+        content_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels = zip(*[
+            (content_Mel, style_Mel, content_Mel.shape[0], content_Label, style_Label)
+            for content_Mel, style_Mel, content_Label, style_Label in batch
             ])
+        content_Style_Mels = torch.FloatTensor(Style_Stack(content_Mels)).transpose(2, 1)   # [Batch, Mel_dim, Time]
+        style_Mels = torch.FloatTensor(Style_Stack(style_Mels)).transpose(2, 1)   # [Batch, Mel_dim, Time]
+        content_Mels = torch.FloatTensor(Content_Stack(content_Mels, 3, False)).transpose(2, 1)   # [Batch, Mel_dim, Time]
 
-        return content_Mels, content_Style_Mels, style_Mels, content_Labels, style_Labels
+        return content_Mels, content_Style_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels
 
-def Content_Stack(mels):
-    max_Length = max([mel.shape[0] for mel in mels])
-    max_Length = int(np.ceil(max_Length / hp_Dict['Content_Encoder']['Frequency']) * hp_Dict['Content_Encoder']['Frequency'])
-
-    return np.stack([
-        np.pad(mel, [[0, max_Length - mel.shape[0]], [0, 0]], constant_values= -hp_Dict['Sound']['Max_Abs_Mel'])
-        for mel in mels
-        ], axis= 0)
+def Content_Stack(mels, expands = 1, rand= True):
+    mel_List = []
+    for mel in mels:
+        if mel.shape[0] > hp_Dict['Train']['Train_Pattern']['Mel_Length'] * expands:
+            if rand:
+                offset = np.random.randint(0, mel.shape[0] - hp_Dict['Train']['Train_Pattern']['Mel_Length'] * expands)
+            else:
+                offset = 0            
+            mel = mel[offset:offset + hp_Dict['Train']['Train_Pattern']['Mel_Length'] * expands]
+        else:
+            pad = (hp_Dict['Train']['Train_Pattern']['Mel_Length'] * expands - mel.shape[0])
+            mel = np.pad(
+                mel,
+                [[int(np.floor(pad / 2)), int(np.ceil(pad / 2))], [0, 0]] if rand else [[0, pad], [0, 0]],
+                mode= 'reflect'
+                )
+        mel_List.append(mel)
+    return np.stack(mel_List)
 
 def Style_Stack(mels):
     styles = []
@@ -215,7 +221,7 @@ if __name__ == "__main__":
 
     dataLoader = torch.utils.data.DataLoader(
         dataset= Inference_Dataset(),
-        shuffle= True,
+        shuffle= False,
         collate_fn= Inference_Collater(),
         batch_size= hp_Dict['Train']['Batch_Size'],
         num_workers= hp_Dict['Train']['Num_Workers'],
@@ -230,4 +236,8 @@ if __name__ == "__main__":
         print(style_Mels.shape)
         print(content_Labels)
         print(style_Labels)
+        print(content_Mels[0])
+        print(content_Mels[3])
+        print(content_Mels[6])
+        print(content_Mels[9])
         time.sleep(2.0)
