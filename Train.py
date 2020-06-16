@@ -12,7 +12,6 @@ from random import sample
 
 from Modules import Content_Encoder, Decoder
 from Datasets import Train_Dataset, Dev_Dataset, Inference_Dataset, Collater, Inference_Collater
-from Radam import RAdam
 
 from Style_Encoder.Modules import Encoder as Style_Encoder, Normalize
 from PWGAN.Modules import Generator as PWGAN
@@ -111,7 +110,7 @@ class Trainer:
             'MAE': torch.nn.L1Loss().to(device),
             'MSE': torch.nn.MSELoss().to(device)
             }
-        self.optimizer = RAdam(
+        self.optimizer = torch.optim.Adam(
             params= list(self.model_Dict['Content_Encoder'].parameters()) + list(self.model_Dict['Decoder'].parameters()),
             lr= hp_Dict['Train']['Learning_Rate']['Initial'],
             betas=(hp_Dict['Train']['ADAM']['Beta1'], hp_Dict['Train']['ADAM']['Beta2']),
@@ -134,7 +133,7 @@ class Trainer:
         content_Mels = content_Mels.to(device)
         content_Style_Mels = content_Style_Mels.to(device)
         style_Mels = style_Mels.to(device)
-
+        
         with torch.no_grad():
             content_Styles = self.model_Dict['Style_Encoder'](content_Style_Mels)
             styles = self.model_Dict['Style_Encoder'](style_Mels)
@@ -149,22 +148,24 @@ class Trainer:
             contents= contents,
             styles= styles
             )
-
-        with torch.no_grad():
-            recontructed_Styles = self.model_Dict['Style_Encoder'](post_Mels[:, :, :hp_Dict['Style_Encoder']['Inference']['Slice_Length']])        
-            recontructed_Styles = torch.nn.functional.normalize(recontructed_Styles, p=2, dim= 1)
+        
+        recontructed_Styles = self.model_Dict['Style_Encoder'](post_Mels[:, :, :hp_Dict['Style_Encoder']['Inference']['Slice_Length']])        
+        recontructed_Styles = torch.nn.functional.normalize(recontructed_Styles, p=2, dim= 1)
         reconstructed_Contents = self.model_Dict['Content_Encoder'](
             mels= post_Mels,
             styles= recontructed_Styles
             )
 
-        loss_Dict['Pre_Reconstructed'] = self.criterion_Dict['MSE'](pre_Mels, content_Mels)
-        loss_Dict['Post_Reconstructed'] = self.criterion_Dict['MSE'](post_Mels, content_Mels)
-        loss_Dict['Content'] = self.criterion_Dict['MAE'](reconstructed_Contents, contents)
-        loss_Dict['Total'] = \
-            hp_Dict['Train']['Loss_Weight']['Pre_Mel'] * loss_Dict['Pre_Reconstructed'] + \
-            hp_Dict['Train']['Loss_Weight']['Post_Mel'] * loss_Dict['Post_Reconstructed'] + \
-            hp_Dict['Train']['Loss_Weight']['Content'] * loss_Dict['Content']
+        loss_Dict['Pre_Reconstructed'] = \
+            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L1'] * self.criterion_Dict['MAE'](pre_Mels, content_Mels) + \
+            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L2'] * self.criterion_Dict['MSE'](pre_Mels, content_Mels)
+        loss_Dict['Post_Reconstructed'] = \
+            hp_Dict['Train']['Loss_Weight']['Post_Mel_L1'] * self.criterion_Dict['MAE'](post_Mels, content_Mels) + \
+            hp_Dict['Train']['Loss_Weight']['Post_Mel_L2'] * self.criterion_Dict['MSE'](post_Mels, content_Mels)
+        loss_Dict['Content'] = \
+            hp_Dict['Train']['Loss_Weight']['Content_L1'] * self.criterion_Dict['MAE'](reconstructed_Contents, contents) + \
+            hp_Dict['Train']['Loss_Weight']['Content_L2'] * self.criterion_Dict['MSE'](reconstructed_Contents, contents)
+        loss_Dict['Total'] = loss_Dict['Pre_Reconstructed'] + loss_Dict['Post_Reconstructed'] + loss_Dict['Content']
 
         self.optimizer.zero_grad()                
         loss_Dict['Total'].backward()        
@@ -234,10 +235,16 @@ class Trainer:
             styles= recontructed_Styles
             )
 
-        loss_Dict['Pre_Reconstructed'] = self.criterion_Dict['MSE'](pre_Mels, content_Mels)
-        loss_Dict['Post_Reconstructed'] = self.criterion_Dict['MSE'](post_Mels, content_Mels)
-        loss_Dict['Content'] = self.criterion_Dict['MAE'](reconstructed_Contents, contents)
-        loss_Dict['Total'] = loss_Dict['Pre_Reconstructed'] + loss_Dict['Pre_Reconstructed'] + loss_Dict['Content']
+        loss_Dict['Pre_Reconstructed'] = \
+            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L1'] * self.criterion_Dict['MAE'](pre_Mels, content_Mels) + \
+            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L2'] * self.criterion_Dict['MSE'](pre_Mels, content_Mels)
+        loss_Dict['Post_Reconstructed'] = \
+            hp_Dict['Train']['Loss_Weight']['Post_Mel_L1'] * self.criterion_Dict['MAE'](post_Mels, content_Mels) + \
+            hp_Dict['Train']['Loss_Weight']['Post_Mel_L2'] * self.criterion_Dict['MSE'](post_Mels, content_Mels)
+        loss_Dict['Content'] = \
+            hp_Dict['Train']['Loss_Weight']['Content_L1'] * self.criterion_Dict['MAE'](reconstructed_Contents, contents) + \
+            hp_Dict['Train']['Loss_Weight']['Content_L2'] * self.criterion_Dict['MSE'](reconstructed_Contents, contents)
+        loss_Dict['Total'] = loss_Dict['Pre_Reconstructed'] + loss_Dict['Post_Reconstructed'] + loss_Dict['Content']
 
         for tag, loss in loss_Dict.items():
             self.loss_Dict['Evaluation'][tag] += loss
@@ -298,13 +305,17 @@ class Trainer:
             style_Labels
             )):
             new_Figure = plt.figure(figsize=(16, 8 * 2), dpi=100)
-            plt.subplot(211)
+            plt.subplot(311)
             plt.imshow(content_Mel[:, :content_Mel_Length], aspect='auto', origin='lower')
             plt.title('Original    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, content_Label, style_Label))            
             plt.colorbar()
-            plt.subplot(212)
+            plt.subplot(312)
             plt.imshow(post_Mel[:, :content_Mel_Length], aspect='auto', origin='lower')
             plt.title('Conversion    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, content_Label, style_Label))
+            plt.colorbar()
+            plt.subplot(313)
+            plt.imshow(content_Mel[:, :content_Mel_Length] - post_Mel[:, :content_Mel_Length], aspect='auto', origin='lower')
+            plt.title('Difference    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, content_Label, style_Label))
             plt.colorbar()
             plt.tight_layout()
             plt.savefig(
@@ -422,6 +433,11 @@ class Trainer:
             total= hp_Dict['Train']['Max_Step'],
             desc='[Training]'
             )
+        
+        hp_Path = os.path.join(hp_Dict['Checkpoint_Path'], 'Hyper_Parameter.yaml').replace('\\', '/')
+        if not os.path.exists(hp_Path):
+            os.makedirs(hp_Dict['Checkpoint_Path'], exist_ok= True)
+            yaml.dump(hp_Dict, open(hp_Path, 'w'))
 
         if hp_Dict['Train']['Initial_Inference']:
             self.Evaluation_Epoch()

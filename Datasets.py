@@ -25,16 +25,15 @@ class Train_Dataset(torch.utils.data.Dataset):
             if len(files) > 1:
                 self.file_List_by_Speaker_Dict[dataset, speaker] = files
         self.key_List = list(self.file_List_by_Speaker_Dict.keys()) * hp_Dict['Train']['Train_Pattern']['Accumulated_Dataset_Epoch']
-
+            
         self.cache_Dict = {}
 
     def __getitem__(self, idx):
         dataset, speaker = self.key_List[idx]
         files = self.file_List_by_Speaker_Dict[dataset, speaker]
-        shuffle(files)  # content and style can be exchanged.
         
         mels = []
-        for file in sample(files, 2):
+        for file in sample(files, 1) * 2 if hp_Dict['Train']['Train_Pattern']['Use_Style_from_Content_Mel'] else sample(files, 2):
             path = os.path.join(hp_Dict['Train']['Train_Pattern']['Path'], dataset, file).replace('\\', '/')
             if path in self.cache_Dict.keys():
                 mels.append(self.cache_Dict[path])
@@ -60,7 +59,7 @@ class Dev_Dataset(torch.utils.data.Dataset):
 
         self.file_List_by_Speaker_Dict = metadata_Dict['File_List_by_Speaker_Dict']
         self.key_List = list(self.file_List_by_Speaker_Dict.keys())
-
+        
         self.cache_Dict = {}
 
     def __getitem__(self, idx):
@@ -68,7 +67,7 @@ class Dev_Dataset(torch.utils.data.Dataset):
         files = self.file_List_by_Speaker_Dict[dataset, speaker]
         
         mels = []
-        for file in sample(files, 2):
+        for file in sample(files, 1) * 2 if hp_Dict['Train']['Train_Pattern']['Use_Style_from_Content_Mel'] else sample(files, 2):
             path = os.path.join(hp_Dict['Train']['Eval_Pattern']['Path'], dataset, file).replace('\\', '/')
             if path in self.cache_Dict.keys():
                 mels.append(self.cache_Dict[path])

@@ -9,6 +9,9 @@ Qian, K., Zhang, Y., Chang, S., Yang, X., & Hasegawa-Johnson, M. (2019). AutoVC:
 * The official code is following:
     * https://github.com/auspicious3000/autovc
 
+* Additional refer:
+    * https://github.com/auspicious3000/autovc/issues/33#issuecomment-576881834
+
 # Requirements
 
 * torch >= 1.5.0

@@ -11,7 +11,7 @@ Content_Encoder:
         Channels: [512, 512, 512]
         Kernel_Sizes: [5, 5, 5]
     LSTM:
-        Sizes: 32
+        Sizes: 48   # Original 32, Bak 64
         Stacks: 2
     Frequency: 32
 
@@ -54,35 +54,39 @@ WaveNet:
     Upsample:
         Scales: [4, 4, 4, 4]
         Pad: 2
-    Checkpoint_Path: 'D:/GoogleDrive_PWGAN/Colab_Test/PWGAN_Torch/Results/Checkpoint/S_400000.pkl'  # If nothing, null
+    Checkpoint_Path: './PWGAN/Example_Results/Checkpoint/S_400000.pkl'  # If nothing, null
 
 
 Train:
-    Use_Pattern_Cache: false
+    Use_Pattern_Cache: true
     Train_Pattern:
         Path: 'C:/Pattern/AutoVC.Pattern/Train'
-        Metadata_File: 'METADATA.VCTK_CMUA.PICKLE'
+        Metadata_File: 'METADATA.VCTK.PICKLE'
         Mel_Length: 128     # This must be a multiple of Content_Encoder/Frequency
-        Accumulated_Dataset_Epoch: 100   # This is to prevent slow down from torch.utils.data.DataLoader when speaker is small.
+        Use_Style_from_Content_Mel: false
+        Accumulated_Dataset_Epoch: 100   # This is to prevent slow down from torch.utils.data.DataLoader when speaker is small.        
     Eval_Pattern:
         Path: 'C:/Pattern/AutoVC.Pattern/Eval'
         Metadata_File: 'METADATA.PICKLE'
     Num_Workers: 2
     Batch_Size: 2
     Loss_Weight:
-        Pre_Mel: 1.0
-        Post_Mel: 1.0
-        Content: 1.0
+        Pre_Mel_L1: 1.0
+        Post_Mel_L1: 1.0
+        Pre_Mel_L2: 1.0
+        Post_Mel_L2: 1.0
+        Content_L1: 1.0
+        Content_L2: 1.0
     Learning_Rate:
-        Initial: 1.0e-3
-        Decay_Step: 200000
-        Decay_Rate: 0.5
+        Initial: 1.0e-4
+        Decay_Step: 1000000 # Not applied
+        Decay_Rate: 1.0 # Not applied
     ADAM:
         Beta1: 0.9
         Beta2: 0.999
         Epsilon: 1.0e-7
     Gradient_Norm: 10.0
-    Max_Step: 400000
+    Max_Step: 1000000
     Checkpoint_Save_Interval: 1000
     Logging_Interval: 100
     Evaluation_Interval: 1000
