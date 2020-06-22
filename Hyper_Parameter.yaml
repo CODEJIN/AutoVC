@@ -56,7 +56,7 @@ WaveNet:
         Scales: [4, 4, 4, 4]
         Pad: 2
     # Checkpoint_Path: './PWGAN/Example_Results/Checkpoint/S_400000.pkl'  # If nothing, null
-    Checkpoint_Path: 'D:/GoogleDrive/Colab_Test/PWGAN_Torch/Results/Checkpoint/S_292000.pkl'
+    Checkpoint_Path: 'D:\GoogleDrive\Colab_Test\PWGAN_Torch\Results\Checkpoint\S_432000.pkl'
 
 
 Train:
