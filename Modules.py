@@ -27,6 +27,10 @@ class Content_Encoder(torch.nn.Module):
             self.layer_Dict['Conv'].add_module('BatchNorm_{}'.format(index), torch.nn.BatchNorm1d(
                 num_features= channels
                 ))
+            # self.layer_Dict['Conv'].add_module('BatchNorm_{}'.format(index), torch.nn.GroupNorm(
+            #     num_groups= hp_Dict['Content_Encoder']['Conv']['Norm_Groups'],
+            #     num_channels= channels
+            #     ))
             self.layer_Dict['Conv'].add_module('ReLU_{}'.format(index), torch.nn.ReLU(
                 inplace= True
                 ))
@@ -46,7 +50,7 @@ class Content_Encoder(torch.nn.Module):
         mels: [Batch, Mel_dim, Time]
         '''
         self.layer_Dict['BiLSTM'].flatten_parameters()
-
+        
         if mels.size(2) % hp_Dict['Content_Encoder']['Frequency'] > 0:
             raise ValueError('The frame length of Mel must be a multiple of frequency.')
 
@@ -82,7 +86,7 @@ class Decoder(torch.nn.Module):
             batch_first= True
             )
         
-        self.layer_Dict['Conv'] = torch.nn.Sequential()        
+        self.layer_Dict['Conv'] = torch.nn.Sequential()
         previous_Channels = hp_Dict['Decoder']['Pre_LSTM']['Sizes']
         for index, (channels, kernel_Size) in enumerate(zip(
             hp_Dict['Decoder']['Conv']['Channels'],
@@ -101,6 +105,9 @@ class Decoder(torch.nn.Module):
                 ))
             self.layer_Dict['Conv'].add_module('ReLU_{}'.format(index), torch.nn.ReLU(
                 inplace= True
+                ))
+            self.layer_Dict['Conv'].add_module('Dropout_{}'.format(index), torch.nn.Dropout(
+                p= hp_Dict['Decoder']['Conv']['Dropout']
                 ))
             previous_Channels = channels
 

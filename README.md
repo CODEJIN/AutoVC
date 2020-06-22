@@ -124,23 +124,15 @@ python Train.py -s <int>
 
 
 # Result
+
 * Current training....
+
 <S>
 
-* The following results are based on the checkpoint of ? steps of 2 batchs (? epochs).
-* I used several different categories as testsets.
+* Please refer the demo site:
+    * https://codejin.github.io/AutoVC_Demo
 
-    | Trained | | Language  | Sex    | Speaker     |
-    |---------|-|-----------|--------|-------------|
-    | Trained | | English   | Male   | VCTK P226   |
-    | Trained | | English   | Female | VCTK P276   |
-    | Unseen  | | English   | Male   | LibriTTS 26 |
-    | Unseen  | | English   | Female | LJSpeech    |
-    | Unseen  | | Korean    | Female | KSS         |
-
-* Unfortunately, when language is different, model was not work well.
 </S>
-
 
 # Trained checkpoint
 

@@ -1,8 +1,8 @@
 import torch
 import numpy as np
 import yaml, librosa, pickle, os
-from random import sample, shuffle
-from itertools import combinations
+from random import sample, shuffle, choice
+from itertools import permutations
 from Pattern_Generator import Mel_Generate
 
 with open('Hyper_Parameter.yaml') as f:
@@ -18,36 +18,35 @@ class Train_Dataset(torch.utils.data.Dataset):
 
         self.file_List_by_Speaker_Dict = {}
         for (dataset, speaker), files in metadata_Dict['File_List_by_Speaker_Dict'].items():
-            files = [
+            self.file_List_by_Speaker_Dict[dataset, speaker] = [
                 path for path in files
                 if metadata_Dict['Mel_Length_Dict'][path] >= hp_Dict['Train']['Train_Pattern']['Mel_Length']
                 ]
-            if len(files) > 1:
-                self.file_List_by_Speaker_Dict[dataset, speaker] = files
-        self.key_List = list(self.file_List_by_Speaker_Dict.keys()) * hp_Dict['Train']['Train_Pattern']['Accumulated_Dataset_Epoch']
+
+        self.key_Pair_List = list(permutations(self.file_List_by_Speaker_Dict.keys(), 2)) * hp_Dict['Train']['Train_Pattern']['Accumulated_Dataset_Epoch']
             
         self.cache_Dict = {}
 
     def __getitem__(self, idx):
-        dataset, speaker = self.key_List[idx]
-        files = self.file_List_by_Speaker_Dict[dataset, speaker]
-        
         mels = []
-        for file in sample(files, 1) * 2 if hp_Dict['Train']['Train_Pattern']['Use_Style_from_Content_Mel'] else sample(files, 2):
-            path = os.path.join(hp_Dict['Train']['Train_Pattern']['Path'], dataset, file).replace('\\', '/')
+        for dataset, speaker in self.key_Pair_List[idx]:
+            files = self.file_List_by_Speaker_Dict[dataset, speaker]
+            path = os.path.join(hp_Dict['Train']['Train_Pattern']['Path'], dataset, choice(files)).replace('\\', '/')
+
             if path in self.cache_Dict.keys():
                 mels.append(self.cache_Dict[path])
                 continue
 
             mel = pickle.load(open(path, 'rb'))['Mel']
             mels.append(mel)
+
             if hp_Dict['Train']['Use_Pattern_Cache']:
                 self.cache_Dict[path] = mel
-        
+
         return mels
 
     def __len__(self):
-        return len(self.key_List)
+        return len(self.key_Pair_List)
 
 class Dev_Dataset(torch.utils.data.Dataset):
     def __init__(self):
@@ -57,31 +56,31 @@ class Dev_Dataset(torch.utils.data.Dataset):
             os.path.join(hp_Dict['Train']['Eval_Pattern']['Path'], hp_Dict['Train']['Eval_Pattern']['Metadata_File']).replace('\\', '/'), 'rb'
             ))
 
-        self.file_List_by_Speaker_Dict = metadata_Dict['File_List_by_Speaker_Dict']
-        self.key_List = list(self.file_List_by_Speaker_Dict.keys())
+        self.file_List_by_Speaker_Dict = metadata_Dict['File_List_by_Speaker_Dict']        
+        self.key_Pair_List = list(permutations(self.file_List_by_Speaker_Dict.keys(), 2))
         
         self.cache_Dict = {}
 
     def __getitem__(self, idx):
-        dataset, speaker = self.key_List[idx]
-        files = self.file_List_by_Speaker_Dict[dataset, speaker]
-        
         mels = []
-        for file in sample(files, 1) * 2 if hp_Dict['Train']['Train_Pattern']['Use_Style_from_Content_Mel'] else sample(files, 2):
-            path = os.path.join(hp_Dict['Train']['Eval_Pattern']['Path'], dataset, file).replace('\\', '/')
+        for dataset, speaker in self.key_Pair_List[idx]:
+            files = self.file_List_by_Speaker_Dict[dataset, speaker]
+            path = os.path.join(hp_Dict['Train']['Eval_Pattern']['Path'], dataset, choice(files)).replace('\\', '/')
+
             if path in self.cache_Dict.keys():
                 mels.append(self.cache_Dict[path])
                 continue
 
             mel = pickle.load(open(path, 'rb'))['Mel']
             mels.append(mel)
+
             if hp_Dict['Train']['Use_Pattern_Cache']:
                 self.cache_Dict[path] = mel
-        
+
         return mels
 
     def __len__(self):
-        return len(self.key_List)
+        return len(self.key_Pair_List)
 
 class Inference_Dataset(torch.utils.data.Dataset):
     def __init__(self, pattern_path= 'Wav_Path_for_Inference.txt'):
@@ -133,7 +132,7 @@ class Inference_Collater:
             ])
         content_Style_Mels = torch.FloatTensor(Style_Stack(content_Mels)).transpose(2, 1)   # [Batch, Mel_dim, Time]
         style_Mels = torch.FloatTensor(Style_Stack(style_Mels)).transpose(2, 1)   # [Batch, Mel_dim, Time]
-        content_Mels = torch.FloatTensor(Content_Stack(content_Mels, 6, False)).transpose(2, 1)   # [Batch, Mel_dim, Time]
+        content_Mels = torch.FloatTensor(Content_Stack(content_Mels, 3, False)).transpose(2, 1)   # [Batch, Mel_dim, Time]
 
         return content_Mels, content_Style_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels
 

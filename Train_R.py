@@ -4,14 +4,14 @@ import logging, yaml, os, sys, argparse, time, math
 from tqdm import tqdm
 from collections import defaultdict
 from tensorboardX import SummaryWriter
-import matplotlib
-matplotlib.use('agg')
+# import matplotlib
+# matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 from random import sample
 
 from Modules import Content_Encoder, Decoder
-from Datasets import Train_Dataset, Dev_Dataset, Inference_Dataset, Collater, Inference_Collater
+from Datasets_R import Train_Dataset, Dev_Dataset, Inference_Dataset, Collater, Inference_Collater
 
 from Style_Encoder.Modules import Encoder as Style_Encoder, Normalize
 from PWGAN.Modules import Generator as PWGAN
@@ -138,22 +138,23 @@ class Trainer:
             content_Styles = self.model_Dict['Style_Encoder'](content_Style_Mels)
             styles = self.model_Dict['Style_Encoder'](style_Mels)
             content_Styles = Normalize(content_Styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
-            styles = Normalize(styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
+            styles = Normalize(styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])        
+            contents = self.model_Dict['Content_Encoder'](
+                mels= content_Mels,
+                styles= content_Styles
+                )
+            _, post_Mels = self.model_Dict['Decoder'](
+                contents= contents,
+                styles= styles
+                )
         
         contents = self.model_Dict['Content_Encoder'](
-            mels= content_Mels,
-            styles= content_Styles
+            mels= post_Mels.detach(),
+            styles= styles
             )
         pre_Mels, post_Mels = self.model_Dict['Decoder'](
             contents= contents,
-            styles= styles
-            )
-        
-        recontructed_Styles = self.model_Dict['Style_Encoder'](post_Mels[:, :, :hp_Dict['Style_Encoder']['Inference']['Slice_Length']])        
-        recontructed_Styles = torch.nn.functional.normalize(recontructed_Styles, p=2, dim= 1)
-        reconstructed_Contents = self.model_Dict['Content_Encoder'](
-            mels= post_Mels,
-            styles= recontructed_Styles
+            styles= content_Styles
             )
 
         loss_Dict['Pre_Reconstructed'] = \
@@ -162,17 +163,14 @@ class Trainer:
         loss_Dict['Post_Reconstructed'] = \
             hp_Dict['Train']['Loss_Weight']['Post_Mel_L1'] * self.criterion_Dict['MAE'](post_Mels, content_Mels) + \
             hp_Dict['Train']['Loss_Weight']['Post_Mel_L2'] * self.criterion_Dict['MSE'](post_Mels, content_Mels)
-        loss_Dict['Content'] = \
-            hp_Dict['Train']['Loss_Weight']['Content_L1'] * self.criterion_Dict['MAE'](reconstructed_Contents, contents) + \
-            hp_Dict['Train']['Loss_Weight']['Content_L2'] * self.criterion_Dict['MSE'](reconstructed_Contents, contents)
-        loss_Dict['Total'] = loss_Dict['Pre_Reconstructed'] + loss_Dict['Post_Reconstructed'] + loss_Dict['Content']
+        loss_Dict['Total'] = loss_Dict['Pre_Reconstructed'] + loss_Dict['Post_Reconstructed']
 
         self.optimizer.zero_grad()                
         loss_Dict['Total'].backward()        
         torch.nn.utils.clip_grad_norm_(
             parameters= list(self.model_Dict['Content_Encoder'].parameters()) + list(self.model_Dict['Decoder'].parameters()),
             max_norm= hp_Dict['Train']['Gradient_Norm']
-            )        
+            )
         self.optimizer.step()
         self.scheduler.step()
         self.steps += 1
@@ -218,21 +216,23 @@ class Trainer:
         content_Styles = self.model_Dict['Style_Encoder'](content_Style_Mels)
         styles = self.model_Dict['Style_Encoder'](style_Mels)
         content_Styles = Normalize(content_Styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
-        styles = Normalize(styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
-
+        styles = Normalize(styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])        
         contents = self.model_Dict['Content_Encoder'](
             mels= content_Mels,
             styles= content_Styles
             )
-        pre_Mels, post_Mels = self.model_Dict['Decoder'](
+        _, post_Mels = self.model_Dict['Decoder'](
             contents= contents,
             styles= styles
             )
-
-        recontructed_Styles = self.model_Dict['Style_Encoder'](post_Mels)
-        reconstructed_Contents = self.model_Dict['Content_Encoder'](
+        
+        contents = self.model_Dict['Content_Encoder'](
             mels= post_Mels,
-            styles= recontructed_Styles
+            styles= styles
+            )
+        pre_Mels, post_Mels = self.model_Dict['Decoder'](
+            contents= contents,
+            styles= content_Styles
             )
 
         loss_Dict['Pre_Reconstructed'] = \
@@ -241,10 +241,7 @@ class Trainer:
         loss_Dict['Post_Reconstructed'] = \
             hp_Dict['Train']['Loss_Weight']['Post_Mel_L1'] * self.criterion_Dict['MAE'](post_Mels, content_Mels) + \
             hp_Dict['Train']['Loss_Weight']['Post_Mel_L2'] * self.criterion_Dict['MSE'](post_Mels, content_Mels)
-        loss_Dict['Content'] = \
-            hp_Dict['Train']['Loss_Weight']['Content_L1'] * self.criterion_Dict['MAE'](reconstructed_Contents, contents) + \
-            hp_Dict['Train']['Loss_Weight']['Content_L2'] * self.criterion_Dict['MSE'](reconstructed_Contents, contents)
-        loss_Dict['Total'] = loss_Dict['Pre_Reconstructed'] + loss_Dict['Post_Reconstructed'] + loss_Dict['Content']
+        loss_Dict['Total'] = loss_Dict['Pre_Reconstructed'] + loss_Dict['Post_Reconstructed']
 
         for tag, loss in loss_Dict.items():
             self.loss_Dict['Evaluation'][tag] += loss
