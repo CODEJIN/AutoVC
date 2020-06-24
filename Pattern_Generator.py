@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor as PE
 from threading import Thread
 from random import shuffle
 
-from Audio import melspectrogram, preemphasis
+from Audio import melspectrogram, preemphasis, inv_preemphasis
 
 with open('Hyper_Parameter.yaml') as f:
     hp_Dict = yaml.load(f, Loader=yaml.Loader)
@@ -21,6 +21,8 @@ def Mel_Generate(path, top_db= 60):
         )[0]
     sig = preemphasis(sig)
     sig = librosa.effects.trim(sig, top_db= top_db, frame_length= 32, hop_length= 16)[0] * 0.99
+    sig = inv_preemphasis(sig)
+    sig = librosa.util.normalize(sig)
 
     return np.transpose(melspectrogram(
         y= sig,
