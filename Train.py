@@ -274,7 +274,7 @@ class Trainer:
 
 
     @torch.no_grad()
-    def Inference_Step(self, content_Mels, content_Style_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels, start_Index= 0):
+    def Inference_Step(self, content_Mels, content_Style_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels, start_Index= 0, tag_Step= False, tag_Index= False):
         content_Mels = content_Mels.to(device)
         content_Style_Mels = content_Style_Mels.to(device)
         style_Mels = style_Mels.to(device)
@@ -316,8 +316,14 @@ class Trainer:
             plt.title('Difference    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, content_Label, style_Label))
             plt.colorbar()
             plt.tight_layout()
+            file = '{}C_{}.S_{}{}.PNG'.format(
+                'Step-{}.'.format(self.steps) if tag_Step else '',
+                content_Label,
+                style_Label,
+                '.IDX_{}'.format(index + start_Index) if tag_Index else ''
+                )
             plt.savefig(
-                os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), 'Step-{}.IDX_{}.PNG'.format(self.steps, index + start_Index)).replace("\\", "/")
+                os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), file).replace("\\", "/")
                 )
             plt.close(new_Figure)
 
@@ -334,15 +340,37 @@ class Trainer:
                 mode= 'replicate'
                 )
 
-            for index, (audio, mel_Length) in enumerate(zip(self.model_Dict['PWGAN'](noises, post_Mels).cpu().numpy(), content_Mel_Lengths)):
+            for index, (audio, mel_Length, content_Label, style_Label) in enumerate(zip(
+                self.model_Dict['PWGAN'](noises, post_Mels).cpu().numpy(),
+                content_Mel_Lengths,
+                content_Labels,
+                style_Labels
+                )):
+                file = '{}C_{}.S_{}{}.Conversion.WAV'.format(
+                    'Step-{}.'.format(self.steps) if tag_Step else '',
+                    content_Label,
+                    style_Label,
+                    '.IDX_{}'.format(index + start_Index) if tag_Index else ''
+                    )
                 wavfile.write(
-                    filename= os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), 'Step-{}.Conversion.IDX_{}.WAV'.format(self.steps, index + start_Index)).replace("\\", "/"),
+                    filename= os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), file).replace("\\", "/"),
                     data= (audio[:mel_Length * hp_Dict['Sound']['Frame_Shift']] * 32767.5).astype(np.int16),
                     rate= hp_Dict['Sound']['Sample_Rate']
                     )
-            for index, audio in enumerate(self.model_Dict['PWGAN'](noises, content_Mels).cpu().numpy()):
+            for index, (audio, mel_Length, content_Label, style_Label) in enumerate(zip(
+                self.model_Dict['PWGAN'](noises, content_Mels).cpu().numpy(),
+                content_Mel_Lengths,
+                content_Labels,
+                style_Labels
+                )):
+                file = '{}C_{}.S_{}{}.Original.WAV'.format(
+                    'Step-{}.'.format(self.steps) if tag_Step else '',
+                    content_Label,
+                    style_Label,
+                    '.IDX_{}'.format(index + start_Index) if tag_Index else ''
+                    )
                 wavfile.write(
-                    filename= os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), 'Step-{}.Original.IDX_{}.WAV'.format(self.steps, index + start_Index)).replace("\\", "/"),
+                    filename= os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), file).replace("\\", "/"),
                     data= (audio[:mel_Length * hp_Dict['Sound']['Frame_Shift']] * 32767.5).astype(np.int16),
                     rate= hp_Dict['Sound']['Sample_Rate']
                     )
