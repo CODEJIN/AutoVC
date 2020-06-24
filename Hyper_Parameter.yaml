@@ -63,7 +63,7 @@ Train:
     Use_Pattern_Cache: true
     Train_Pattern:
         Path: '/home/heejo/data/AutoVC_Pattern/Train'
-        Metadata_File: 'METADATA.VCTK.PICKLE'   # 'METADATA.PICKLE'
+        Metadata_File: 'METADATA.PICKLE'   # 'METADATA.PICKLE'
         Mel_Length: 128     # This must be a multiple of Content_Encoder/Frequency
         Use_Style_from_Content_Mel: false
         Accumulated_Dataset_Epoch: 100   # This is to prevent slow down from torch.utils.data.DataLoader when speaker is small.        

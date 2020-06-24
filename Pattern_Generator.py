@@ -180,7 +180,7 @@ def Metadata_Generate(eval= False):
             with open(os.path.join(root, file).replace("\\", "/"), "rb") as f:
                 pattern_Dict = pickle.load(f)
                 try:
-                    if not all([key in ('Mel', 'Speaker', 'Dataset') for key in pattern_Dict.key()]):
+                    if not all([key in pattern_Dict.keys() for key in ('Mel', 'Speaker', 'Dataset')]):
                         continue
 
                     new_Metadata_Dict['File_List'].append(file)
