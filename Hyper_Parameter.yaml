@@ -13,9 +13,9 @@ Content_Encoder:
         Channels: [512, 512, 512]
         Kernel_Sizes: [5, 5, 5]
     LSTM:
-        Sizes: 8
+        Sizes: 128
         Stacks: 2
-    Frequency: 8
+    Frequency: 32
 
 Style_Encoder:
     Embedding_Size: 256
@@ -26,7 +26,7 @@ Style_Encoder:
         Samples: 5
         Slice_Length: 64
         Overlap_Length: 32
-    Checkpoint_Path: 'D:/SE.Results/Checkpoint/S_100000.pkl'
+    Checkpoint_Path: './Style_Encoder/Example_Results/Checkpoint/S_100000.pkl'
     
 Decoder:
     # In paper here is pre conv, but there is no conv in official code.
@@ -76,12 +76,12 @@ Train:
     Num_Workers: 2
     Batch_Size: 2
     Loss_Weight:
-        Pre_Mel_L1: 1.0
-        Post_Mel_L1: 1.0
+        Pre_Mel_L1: 0.0
+        Post_Mel_L1: 0.0
         Pre_Mel_L2: 1.0
         Post_Mel_L2: 1.0
         Content_L1: 1.0
-        Content_L2: 1.0
+        Content_L2: 0.0
     Learning_Rate:
         Initial: 1.0e-4
         Decay_Step: 1000000 # Not applied
@@ -91,8 +91,8 @@ Train:
         Beta2: 0.999
         Epsilon: 1.0e-7
     Gradient_Norm: 10.0
-    Max_Step: 1000000
-    Checkpoint_Save_Interval: 1000
+    Max_Step: 400000
+    Checkpoint_Save_Interval: 5000
     Logging_Interval: 100
     Evaluation_Interval: 1000
     Inference_Interval: 5000

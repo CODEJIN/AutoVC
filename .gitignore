@@ -129,3 +129,6 @@ dmypy.json
 .pyre/
 run.ps1
 Temp.py
+S_580000.pkl
+
+Results*

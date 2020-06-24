@@ -167,8 +167,8 @@ def Metadata_Generate(eval= False):
     for root, _, files in os.walk(pattern_Path):
         for file in files:
             with open(os.path.join(root, file).replace("\\", "/"), "rb") as f:
-                    pattern_Dict = pickle.load(f)
-                # try:
+                pattern_Dict = pickle.load(f)
+                try:
                     if not all([key in pattern_Dict.keys() for key in ('Mel', 'Speaker', 'Dataset')]):
                         continue
 
@@ -179,8 +179,8 @@ def Metadata_Generate(eval= False):
                     if not (pattern_Dict['Dataset'], pattern_Dict['Speaker']) in new_Metadata_Dict['File_List_by_Speaker_Dict'].keys():
                         new_Metadata_Dict['File_List_by_Speaker_Dict'][pattern_Dict['Dataset'], pattern_Dict['Speaker']] = []
                     new_Metadata_Dict['File_List_by_Speaker_Dict'][pattern_Dict['Dataset'], pattern_Dict['Speaker']].append(file)
-                # except:
-                #     print('File \'{}\' is not correct pattern file. This file is ignored.'.format(file))
+                except:
+                    print('File \'{}\' is not correct pattern file. This file is ignored.'.format(file))
                 
     with open(os.path.join(pattern_Path, hp_Dict['Train']['Train_Pattern']['Metadata_File'].upper()).replace("\\", "/"), 'wb') as f:
         pickle.dump(new_Metadata_Dict, f, protocol=4)
@@ -270,15 +270,15 @@ if __name__ == '__main__':
         raise ValueError('Total info count must be bigger than 0.')
     print('Total info generated: {}'.format(len(path_List)))
 
-    # with PE(max_workers = args.max_worker) as pe:
-    #     for _ in tqdm(
-    #         pe.map(
-    #             lambda params: Pattern_File_Generate(*params),
-    #             [(path, speaker_Dict[path], dataset_Dict[path], tag_Dict[path], False) for path in path_List]
-    #             ),
-    #         total= len(path_List)
-    #         ):
-    #         pass
+    with PE(max_workers = args.max_worker) as pe:
+        for _ in tqdm(
+            pe.map(
+                lambda params: Pattern_File_Generate(*params),
+                [(path, speaker_Dict[path], dataset_Dict[path], tag_Dict[path], False) for path in path_List]
+                ),
+            total= len(path_List)
+            ):
+            pass
     Metadata_Generate()
 
     if not args.vc1_test_path is None:
