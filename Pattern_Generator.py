@@ -5,32 +5,13 @@ from concurrent.futures import ThreadPoolExecutor as PE
 from threading import Thread
 from random import shuffle
 
-from Audio import melspectrogram, preemphasis
+from Audio import Audio_Prep, Mel_Generate
 
 with open('Hyper_Parameter.yaml') as f:
     hp_Dict = yaml.load(f, Loader=yaml.Loader)
 
 using_Extension = [x.upper() for x in ['.wav', '.m4a', '.flac']]
 top_DB_Dict = {'VCTK': 15, 'VC1': 23, 'VC2': 23, 'Libri': 23, 'CMUA': 60}  # VC1 and Libri is from 'https://github.com/CorentinJ/Real-Time-Voice-Cloning'
-
-
-def Mel_Generate(path, top_db= 60):
-    sig = librosa.core.load(
-        path,
-        sr = hp_Dict['Sound']['Sample_Rate']
-        )[0]
-    sig = preemphasis(sig)
-    sig = librosa.effects.trim(sig, top_db= top_db, frame_length= 32, hop_length= 16)[0] * 0.99
-
-    return np.transpose(melspectrogram(
-        y= sig,
-        num_freq= hp_Dict['Sound']['Spectrogram_Dim'],
-        hop_length= hp_Dict['Sound']['Frame_Shift'],
-        win_length= hp_Dict['Sound']['Frame_Length'],
-        num_mels= hp_Dict['Sound']['Mel_Dim'],
-        sample_rate= hp_Dict['Sound']['Sample_Rate'],
-        max_abs_value= hp_Dict['Sound']['Max_Abs_Mel']
-        ).astype(np.float32))
 
 def Pattern_File_Generate(path, speaker, dataset, tag= '', eval= False):
     pattern_Path = hp_Dict['Train']['Eval_Pattern' if eval else 'Train_Pattern']['Path']
@@ -49,7 +30,17 @@ def Pattern_File_Generate(path, speaker, dataset, tag= '', eval= False):
     os.makedirs(os.path.join(pattern_Path, dataset).replace('\\', '/'), exist_ok= True)    
     try:
         new_Pattern_Dict = {
-            'Mel': Mel_Generate(path, top_DB_Dict[dataset]),
+            'Mel': Mel_Generate(
+                audio= Audio_Prep(path, hp_Dict['Sound']['Sample_Rate']),
+                sample_rate= hp_Dict['Sound']['Sample_Rate'],
+                num_frequency= hp_Dict['Sound']['Spectrogram_Dim'],
+                num_mel= hp_Dict['Sound']['Mel_Dim'],
+                window_length= hp_Dict['Sound']['Frame_Length'],
+                hop_length= hp_Dict['Sound']['Frame_Shift'],        
+                mel_fmin= hp_Dict['Sound']['Mel_F_Min'],
+                mel_fmax= hp_Dict['Sound']['Mel_F_Max'],
+                max_abs_value= hp_Dict['Sound']['Max_Abs_Mel']
+                ),
             'Speaker': speaker,
             'Dataset': dataset,
             }
@@ -176,9 +167,9 @@ def Metadata_Generate(eval= False):
     for root, _, files in os.walk(pattern_Path):
         for file in files:
             with open(os.path.join(root, file).replace("\\", "/"), "rb") as f:
-                pattern_Dict = pickle.load(f)
-                try:
-                    if not all([key in ('Mel', 'Speaker', 'Dataset') for key in pattern_Dict.key()]):
+                    pattern_Dict = pickle.load(f)
+                # try:
+                    if not all([key in pattern_Dict.keys() for key in ('Mel', 'Speaker', 'Dataset')]):
                         continue
 
                     new_Metadata_Dict['File_List'].append(file)
@@ -188,8 +179,8 @@ def Metadata_Generate(eval= False):
                     if not (pattern_Dict['Dataset'], pattern_Dict['Speaker']) in new_Metadata_Dict['File_List_by_Speaker_Dict'].keys():
                         new_Metadata_Dict['File_List_by_Speaker_Dict'][pattern_Dict['Dataset'], pattern_Dict['Speaker']] = []
                     new_Metadata_Dict['File_List_by_Speaker_Dict'][pattern_Dict['Dataset'], pattern_Dict['Speaker']].append(file)
-                except:
-                    print('File \'{}\' is not correct pattern file. This file is ignored.'.format(file))
+                # except:
+                #     print('File \'{}\' is not correct pattern file. This file is ignored.'.format(file))
                 
     with open(os.path.join(pattern_Path, hp_Dict['Train']['Train_Pattern']['Metadata_File'].upper()).replace("\\", "/"), 'wb') as f:
         pickle.dump(new_Metadata_Dict, f, protocol=4)
@@ -279,15 +270,15 @@ if __name__ == '__main__':
         raise ValueError('Total info count must be bigger than 0.')
     print('Total info generated: {}'.format(len(path_List)))
 
-    with PE(max_workers = args.max_worker) as pe:
-        for _ in tqdm(
-            pe.map(
-                lambda params: Pattern_File_Generate(*params),
-                [(path, speaker_Dict[path], dataset_Dict[path], tag_Dict[path], False) for path in path_List]
-                ),
-            total= len(path_List)
-            ):
-            pass
+    # with PE(max_workers = args.max_worker) as pe:
+    #     for _ in tqdm(
+    #         pe.map(
+    #             lambda params: Pattern_File_Generate(*params),
+    #             [(path, speaker_Dict[path], dataset_Dict[path], tag_Dict[path], False) for path in path_List]
+    #             ),
+    #         total= len(path_List)
+    #         ):
+    #         pass
     Metadata_Generate()
 
     if not args.vc1_test_path is None:
