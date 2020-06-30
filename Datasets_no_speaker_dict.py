@@ -1,9 +1,10 @@
 import torch
 import numpy as np
 import yaml, librosa, pickle, os
-from random import sample, shuffle, choice
-from itertools import permutations
-from Pattern_Generator import Mel_Generate
+from random import sample, shuffle
+from itertools import combinations
+
+from Audio import Audio_Prep, Mel_Generate
 
 with open('Hyper_Parameter.yaml') as f:
     hp_Dict = yaml.load(f, Loader=yaml.Loader)
@@ -18,35 +19,36 @@ class Train_Dataset(torch.utils.data.Dataset):
 
         self.file_List_by_Speaker_Dict = {}
         for (dataset, speaker), files in metadata_Dict['File_List_by_Speaker_Dict'].items():
-            self.file_List_by_Speaker_Dict[dataset, speaker] = [
+            files = [
                 path for path in files
                 if metadata_Dict['Mel_Length_Dict'][path] >= hp_Dict['Train']['Train_Pattern']['Mel_Length']
                 ]
-
-        self.key_Pair_List = list(permutations(self.file_List_by_Speaker_Dict.keys(), 2)) * hp_Dict['Train']['Train_Pattern']['Accumulated_Dataset_Epoch']
+            if len(files) > 1:
+                self.file_List_by_Speaker_Dict[dataset, speaker] = files
+        self.key_List = list(self.file_List_by_Speaker_Dict.keys()) * hp_Dict['Train']['Train_Pattern']['Accumulated_Dataset_Epoch']
             
         self.cache_Dict = {}
 
     def __getitem__(self, idx):
+        dataset, speaker = self.key_List[idx]
+        files = self.file_List_by_Speaker_Dict[dataset, speaker]
+        
         mels = []
-        for dataset, speaker in self.key_Pair_List[idx]:
-            files = self.file_List_by_Speaker_Dict[dataset, speaker]
-            path = os.path.join(hp_Dict['Train']['Train_Pattern']['Path'], dataset, choice(files)).replace('\\', '/')
-
+        for file in sample(files, 1) * 2 if hp_Dict['Train']['Train_Pattern']['Use_Style_from_Content_Mel'] else sample(files, 2):
+            path = os.path.join(hp_Dict['Train']['Train_Pattern']['Path'], dataset, file).replace('\\', '/')
             if path in self.cache_Dict.keys():
                 mels.append(self.cache_Dict[path])
                 continue
 
             mel = pickle.load(open(path, 'rb'))['Mel']
             mels.append(mel)
-
             if hp_Dict['Train']['Use_Pattern_Cache']:
                 self.cache_Dict[path] = mel
-
+        
         return mels
 
     def __len__(self):
-        return len(self.key_Pair_List)
+        return len(self.key_List)
 
 class Dev_Dataset(torch.utils.data.Dataset):
     def __init__(self):
@@ -56,31 +58,31 @@ class Dev_Dataset(torch.utils.data.Dataset):
             os.path.join(hp_Dict['Train']['Eval_Pattern']['Path'], hp_Dict['Train']['Eval_Pattern']['Metadata_File']).replace('\\', '/'), 'rb'
             ))
 
-        self.file_List_by_Speaker_Dict = metadata_Dict['File_List_by_Speaker_Dict']        
-        self.key_Pair_List = list(permutations(self.file_List_by_Speaker_Dict.keys(), 2))
+        self.file_List_by_Speaker_Dict = metadata_Dict['File_List_by_Speaker_Dict']
+        self.key_List = list(self.file_List_by_Speaker_Dict.keys())
         
         self.cache_Dict = {}
 
     def __getitem__(self, idx):
+        dataset, speaker = self.key_List[idx]
+        files = self.file_List_by_Speaker_Dict[dataset, speaker]
+        
         mels = []
-        for dataset, speaker in self.key_Pair_List[idx]:
-            files = self.file_List_by_Speaker_Dict[dataset, speaker]
-            path = os.path.join(hp_Dict['Train']['Eval_Pattern']['Path'], dataset, choice(files)).replace('\\', '/')
-
+        for file in sample(files, 1) * 2 if hp_Dict['Train']['Train_Pattern']['Use_Style_from_Content_Mel'] else sample(files, 2):
+            path = os.path.join(hp_Dict['Train']['Eval_Pattern']['Path'], dataset, file).replace('\\', '/')
             if path in self.cache_Dict.keys():
                 mels.append(self.cache_Dict[path])
                 continue
 
             mel = pickle.load(open(path, 'rb'))['Mel']
             mels.append(mel)
-
             if hp_Dict['Train']['Use_Pattern_Cache']:
                 self.cache_Dict[path] = mel
-
+        
         return mels
 
     def __len__(self):
-        return len(self.key_Pair_List)
+        return len(self.key_List)
 
 class Inference_Dataset(torch.utils.data.Dataset):
     def __init__(self, pattern_path= 'Wav_Path_for_Inference.txt'):
@@ -98,8 +100,28 @@ class Inference_Dataset(torch.utils.data.Dataset):
             return self.cache_Dict[idx]
         
         content_Label, content_Path, style_Label, style_Path = self.pattern_List[idx]
-        content_Mel = Mel_Generate(content_Path, 15)
-        style_Mel = Mel_Generate(style_Path, 15)
+        content_Mel = Mel_Generate(
+            audio= Audio_Prep(content_Path, hp_Dict['Sound']['Sample_Rate']),
+            sample_rate= hp_Dict['Sound']['Sample_Rate'],
+            num_frequency= hp_Dict['Sound']['Spectrogram_Dim'],
+            num_mel= hp_Dict['Sound']['Mel_Dim'],
+            window_length= hp_Dict['Sound']['Frame_Length'],
+            hop_length= hp_Dict['Sound']['Frame_Shift'],        
+            mel_fmin= hp_Dict['Sound']['Mel_F_Min'],
+            mel_fmax= hp_Dict['Sound']['Mel_F_Max'],
+            max_abs_value= hp_Dict['Sound']['Max_Abs_Mel']
+            )
+        style_Mel = Mel_Generate(
+            audio= Audio_Prep(style_Path, hp_Dict['Sound']['Sample_Rate']),
+            sample_rate= hp_Dict['Sound']['Sample_Rate'],
+            num_frequency= hp_Dict['Sound']['Spectrogram_Dim'],
+            num_mel= hp_Dict['Sound']['Mel_Dim'],
+            window_length= hp_Dict['Sound']['Frame_Length'],
+            hop_length= hp_Dict['Sound']['Frame_Shift'],        
+            mel_fmin= hp_Dict['Sound']['Mel_F_Min'],
+            mel_fmax= hp_Dict['Sound']['Mel_F_Max'],
+            max_abs_value= hp_Dict['Sound']['Max_Abs_Mel']
+            )
         pattern = content_Mel, style_Mel, content_Label, style_Label
 
         if hp_Dict['Train']['Use_Pattern_Cache']:
@@ -132,7 +154,7 @@ class Inference_Collater:
             ])
         content_Style_Mels = torch.FloatTensor(Style_Stack(content_Mels)).transpose(2, 1)   # [Batch, Mel_dim, Time]
         style_Mels = torch.FloatTensor(Style_Stack(style_Mels)).transpose(2, 1)   # [Batch, Mel_dim, Time]
-        content_Mels = torch.FloatTensor(Content_Stack(content_Mels, 3, False)).transpose(2, 1)   # [Batch, Mel_dim, Time]
+        content_Mels = torch.FloatTensor(Content_Stack(content_Mels, 6, False)).transpose(2, 1)   # [Batch, Mel_dim, Time]
 
         return content_Mels, content_Style_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels
 

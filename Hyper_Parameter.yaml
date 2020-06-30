@@ -12,10 +12,13 @@ Content_Encoder:
     Conv:
         Channels: [512, 512, 512]
         Kernel_Sizes: [5, 5, 5]
+        GroupNorm:
+            Use: true
+            Num_Groups: 32
     LSTM:
-        Sizes: 128
+        Sizes: 16
         Stacks: 2
-    Frequency: 64
+    Frequency: 16
 
 Style_Encoder:
     Embedding_Size: 256
@@ -31,19 +34,26 @@ Style_Encoder:
 Decoder:
     # In paper here is pre conv, but there is no conv in official code.
     Pre_LSTM:
-        Sizes: 512 # In code 512, paper 1024
-        Stacks: 1
+        Sizes: 512 # In official code 512, paper 1024
+        Stacks: 3   # Vanilla: 1
     Conv:
-        Channels: [512, 512, 512]
-        Kernel_Sizes: [5, 5, 5]
+        Channels: [] # Vanilla: [512, 512, 512]
+        Kernel_Sizes:  [] # Vanilla: [5, 5, 5]
+        GroupNorm:
+            Use: true
+            Num_Groups: 32
         Dropout: 0.0    # This part is customized.
     Post_LSTM:
         Sizes: 1024
-        Stacks: 2
+        Stacks: 0   # Vanilla: 2, F0: 0
 
 Postnet:
     Channels: [512, 512, 512, 512]
     Kernel_Sizes: [5, 5, 5, 5]
+    Activation: 'relu'  # Vanilla: 'tanh'
+    GroupNorm:
+        Use: true
+        Num_Groups: 32
 
 WaveNet:
     Residual_Channels: 64
@@ -64,13 +74,21 @@ WaveNet:
 Train:
     Use_Pattern_Cache: true
     Train_Pattern:
-        Path: '../Pattern/AutoVC.SR24K.Pattern/Train'
+        Path: '../Pattern/SS.SR24K.Pattern/Train'
         Metadata_File: 'METADATA.PICKLE'   # 'METADATA.PICKLE'
-        Mel_Length: 512     # This must be a multiple of Content_Encoder/Frequency
+        Mel_Length: # This must be a multiple of Content_Encoder/Frequency
+            Min: 64
+            Max: 192
+        Interpolation:
+            Min: 0.7
+            Max: 1.35
+        Energy_Variance: # To calculate simply
+            Min: 0.35
+            Max: 1.0
         Use_Style_from_Content_Mel: false
         Accumulated_Dataset_Epoch: 100   # This is to prevent slow down from torch.utils.data.DataLoader when speaker is small.        
     Eval_Pattern:
-        Path: '../Pattern/AutoVC.SR24K.Pattern/Eval'
+        Path: '../Pattern/SS.SR24K.Pattern/Eval'
         Metadata_File: 'METADATA.PICKLE'
     Num_Workers: 2
     Batch_Size: 32

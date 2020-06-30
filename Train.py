@@ -159,11 +159,9 @@ class Trainer:
             styles= styles
             )
         
-        recontructed_Styles = self.model_Dict['Style_Encoder'](post_Mels[:, :, :hp_Dict['Style_Encoder']['Inference']['Slice_Length']])        
-        recontructed_Styles = torch.nn.functional.normalize(recontructed_Styles, p=2, dim= 1)
         reconstructed_Contents = self.model_Dict['Content_Encoder'](
             mels= post_Mels,
-            styles= recontructed_Styles
+            styles= content_Styles
             )
 
         loss_Dict['Pre_Reconstructed'] = \
@@ -239,10 +237,9 @@ class Trainer:
             styles= styles
             )
 
-        recontructed_Styles = self.model_Dict['Style_Encoder'](post_Mels)
         reconstructed_Contents = self.model_Dict['Content_Encoder'](
             mels= post_Mels,
-            styles= recontructed_Styles
+            styles= content_Styles
             )
 
         loss_Dict['Pre_Reconstructed'] = \

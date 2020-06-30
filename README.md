@@ -2,12 +2,17 @@
 
 * This code is an implementation of AutoVC. The algorithm is based on the following paper:
 
-```
-Qian, K., Zhang, Y., Chang, S., Yang, X., & Hasegawa-Johnson, M. (2019). AutoVC:Zero-shot voice style transfer with only autoencoder loss. arXiv preprint arXiv:1905.05879.
-```
+    * [Qian, K., Zhang, Y., Chang, S., Yang, X., & Hasegawa-Johnson, M. (2019). AutoVC:Zero-shot voice style transfer with only autoencoder loss. arXiv preprint arXiv:1905.05879.](https://arxiv.org/abs/1905.05879)
 
-* The official code is following:
+    * [Qian, K., Jin, Z., Hasegawa-Johnson, M., & Mysore, G. J. (2020, May). F0-consistent many-to-many non-parallel voice conversion via conditional autoencoder. In ICASSP 2020-2020 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) (pp. 6284-6288). IEEE.](https://arxiv.org/abs/2004.07370)
+
+
+*  the official code and demo which I referred are following:
     * https://github.com/auspicious3000/autovc
+
+    * https://auspicious3000.github.io/autovc-demo/
+
+    * https://auspicious3000.github.io/icassp-2020-demo/
 
 * Additional refer:
     * https://github.com/auspicious3000/autovc/issues/33#issuecomment-576881834
@@ -31,8 +36,8 @@ Qian, K., Zhang, Y., Chang, S., Yang, X., & Hasegawa-Johnson, M. (2019). AutoVC:
 |        | | Dataset   | Dataset address                                 |
 |--------|-|-----------|-------------------------------------------------|
 | O      | | VCTK      | https://datashare.is.ed.ac.uk/handle/10283/2651 |
-| X      | | LibriTTS  | https://openslr.org/60/                         |
-| O      | | CMU Arctic| http://www.festvox.org/cmu_arctic/index.html    |
+| O      | | LibriTTS  | https://openslr.org/60/                         |
+| X      | | CMU Arctic| http://www.festvox.org/cmu_arctic/index.html    |
 | X      | | VoxCeleb1 | http://www.robots.ox.ac.uk/~vgg/data/voxceleb/  |
 | X      | | VoxCeleb2 | http://www.robots.ox.ac.uk/~vgg/data/voxceleb/  |
 

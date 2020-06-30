@@ -24,13 +24,18 @@ class Content_Encoder(torch.nn.Module):
                 bias= False,
                 w_init_gain= 'relu'
                 ))
-            self.layer_Dict['Conv'].add_module('BatchNorm_{}'.format(index), torch.nn.BatchNorm1d(
-                num_features= channels
-                ))
-            # self.layer_Dict['Conv'].add_module('BatchNorm_{}'.format(index), torch.nn.GroupNorm(
-            #     num_groups= hp_Dict['Content_Encoder']['Conv']['Norm_Groups'],
-            #     num_channels= channels
-            #     ))
+
+            if hp_Dict['Content_Encoder']['Conv']['GroupNorm']['Use']:
+                # AutoVC uses small batch size(it is 2 in paper). To normalization performance, I replace BN to GN.
+                self.layer_Dict['Conv'].add_module('GroupNorm_{}'.format(index), torch.nn.GroupNorm(
+                    num_groups= hp_Dict['Content_Encoder']['Conv']['GroupNorm']['Num_Groups'],
+                    num_channels= channels
+                    ))
+            else:
+                self.layer_Dict['Conv'].add_module('BatchNorm_{}'.format(index), torch.nn.BatchNorm1d(
+                    num_features= channels
+                    ))
+
             self.layer_Dict['Conv'].add_module('ReLU_{}'.format(index), torch.nn.ReLU(
                 inplace= True
                 ))
@@ -100,9 +105,17 @@ class Decoder(torch.nn.Module):
                 bias= False,
                 w_init_gain= 'relu'
                 ))
-            self.layer_Dict['Conv'].add_module('BatchNorm_{}'.format(index), torch.nn.BatchNorm1d(
-                num_features= channels
-                ))
+
+            if hp_Dict['Decoder']['Conv']['GroupNorm']['Use']:
+                # AutoVC uses small batch size(it is 2 in paper). To normalization performance, I replace BN to GN.
+                self.layer_Dict['Conv'].add_module('GroupNorm_{}'.format(index), torch.nn.GroupNorm(
+                    num_groups= hp_Dict['Decoder']['Conv']['GroupNorm']['Num_Groups'],
+                    num_channels= channels
+                    ))
+            else:
+                self.layer_Dict['Conv'].add_module('BatchNorm_{}'.format(index), torch.nn.BatchNorm1d(
+                    num_features= channels
+                    ))
             self.layer_Dict['Conv'].add_module('ReLU_{}'.format(index), torch.nn.ReLU(
                 inplace= True
                 ))
@@ -111,15 +124,18 @@ class Decoder(torch.nn.Module):
                 ))
             previous_Channels = channels
 
-        self.layer_Dict['Post_LSTM'] = torch.nn.LSTM(
-            input_size= hp_Dict['Decoder']['Conv']['Channels'][-1],
-            hidden_size= hp_Dict['Decoder']['Post_LSTM']['Sizes'],
-            num_layers= hp_Dict['Decoder']['Post_LSTM']['Stacks'],
-            bias= True,
-            batch_first= True
-            )
+        if hp_Dict['Decoder']['Post_LSTM']['Stacks'] > 0:
+            self.layer_Dict['Post_LSTM'] = torch.nn.LSTM(
+                input_size= hp_Dict['Decoder']['Conv']['Channels'][-1],
+                hidden_size= hp_Dict['Decoder']['Post_LSTM']['Sizes'],
+                num_layers= hp_Dict['Decoder']['Post_LSTM']['Stacks'],
+                bias= True,
+                batch_first= True
+                )
+            previous_Channels = hp_Dict['Decoder']['Post_LSTM']['Sizes']
+
         self.layer_Dict['Linear'] = Linear( #This is same to Conv1x1
-            in_features= hp_Dict['Decoder']['Post_LSTM']['Sizes'],
+            in_features= previous_Channels,
             out_features= hp_Dict['Sound']['Mel_Dim'],
             bias= True
             )
@@ -139,13 +155,12 @@ class Decoder(torch.nn.Module):
             ], dim= 1)
         x, _ = self.layer_Dict['Pre_LSTM'](x.transpose(2, 1))   # [Batch, Time, Pre_LSTM_dim]
         x = self.layer_Dict['Conv'](x.transpose(2, 1))  # [Batch, Conv_dim, Time]
-        x, _ = self.layer_Dict['Post_LSTM'](x.transpose(2, 1))   # [Batch, Time, Post_LSTM_dim]
-        mels = self.layer_Dict['Linear'](x).transpose(2, 1)    # [Batch, Mel_dim, Time]
-        post_Mels = self.layer_Dict['Postnet'](mels= mels)  # [Batch, Mel_dim, Time]
+        if hp_Dict['Decoder']['Post_LSTM']['Stacks'] > 0:
+            x, _ = self.layer_Dict['Post_LSTM'](x.transpose(2, 1))   # [Batch, Time, Post_LSTM_dim]
+        pre_Mels = self.layer_Dict['Linear'](x).transpose(2, 1)    # [Batch, Mel_dim, Time]
+        post_Mels = self.layer_Dict['Postnet'](mels= pre_Mels)  # [Batch, Mel_dim, Time]
 
-        return mels, post_Mels
-
-
+        return pre_Mels, post_Mels
 
 class Postnet(torch.nn.Module):
     def __init__(self):
@@ -164,13 +179,25 @@ class Postnet(torch.nn.Module):
                 kernel_size= kernel_Size,
                 padding= (kernel_Size - 1) // 2,
                 bias= False,
-                w_init_gain= 'tanh'
-                ))            
-            self.layer.add_module('BatchNorm_{}'.format(index), torch.nn.BatchNorm1d(
-                num_features= channels
-                ))                
+                w_init_gain= hp_Dict['Postnet']['Activation'].lower()
+                ))
+            if hp_Dict['Postnet']['GroupNorm']['Use']:
+                # AutoVC uses small batch size(it is 2 in paper). To normalization performance, I replace BN to GN.
+                self.layer.add_module('GroupNorm_{}'.format(index), torch.nn.GroupNorm(
+                    num_groups= hp_Dict['Postnet']['GroupNorm']['Num_Groups'],
+                    num_channels= channels
+                    ))
+            else:
+                self.layer.add_module('BatchNorm_{}'.format(index), torch.nn.BatchNorm1d(
+                    num_features= channels
+                    ))
             if index < len(hp_Dict['Postnet']['Channels']):
-                self.layer.add_module('Tanh_{}'.format(index), torch.nn.Tanh())
+                if hp_Dict['Postnet']['Activation'].lower() == 'relu':
+                    self.layer.add_module('ReLU_{}'.format(index), torch.nn.ReLU())
+                elif hp_Dict['Postnet']['Activation'].lower() == 'tanh':
+                    self.layer.add_module('Tanh_{}'.format(index), torch.nn.Tanh())
+                else:
+                    raise Exception('activation type must be one of \'relu\' or \'tanh\'.)
             previous_Channels = channels
 
     def forward(self, mels):
@@ -205,15 +232,6 @@ class Linear(torch.nn.Linear):
             )
         if not self.bias is None:
             torch.nn.init.zeros_(self.bias)
-
-class Transpose(torch.nn.Module):
-    def __init__(self, dim0, dim1):
-        super(Transpose, self).__init__()
-        self.dim0, self.dim1 = dim0, dim1
-
-    def forward(self, x):
-        return x.transpose(self.dim0, self.dim1)
-
 
 if __name__ == "__main__":
     style_Encoder = Style_Encoder(
