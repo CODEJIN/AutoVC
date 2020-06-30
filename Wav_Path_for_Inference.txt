@@ -1,4 +1,4 @@
-Content_Label	Content_Wav	Style_Label	Style_Wav
+Source_Label	Source_Wav	Target_Label	Target_Wav
 Trained_ENG_Ma	./Wav_for_Inference/p226_018.wav	Trained_ENG_Ma	./Wav_for_Inference/p226_018.wav
 Trained_ENG_Ma	./Wav_for_Inference/p226_018.wav	Unseen_ENG_Ma	./Wav_for_Inference/NUS48E_ZHIY_03.wav
 Trained_ENG_Ma	./Wav_for_Inference/p226_018.wav	Unseen_KOR_Ma	./Wav_for_Inference/KOR_Unseen_Male.wav

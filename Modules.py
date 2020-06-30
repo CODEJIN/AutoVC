@@ -25,10 +25,10 @@ class Content_Encoder(torch.nn.Module):
                 w_init_gain= 'relu'
                 ))
 
-            if hp_Dict['Content_Encoder']['Conv']['GroupNorm']['Use']:
+            if hp_Dict['Content_Encoder']['Conv']['Use_GroupNorm']:
                 # AutoVC uses small batch size(it is 2 in paper). To normalization performance, I replace BN to GN.
                 self.layer_Dict['Conv'].add_module('GroupNorm_{}'.format(index), torch.nn.GroupNorm(
-                    num_groups= hp_Dict['Content_Encoder']['Conv']['GroupNorm']['Num_Groups'],
+                    num_groups= channels // 16,
                     num_channels= channels
                     ))
             else:
@@ -83,8 +83,13 @@ class Decoder(torch.nn.Module):
         
         # This part is different between official code and paper.
         # This code is based on the official code.
+
+        previous_Channels = hp_Dict['Content_Encoder']['LSTM']['Sizes'] * 2  + hp_Dict['Style_Encoder']['Embedding_Size']
+        if hp_Dict['Decoder']['Use_Pitch']:
+            self.layer_Dict['Pitch_Quantinizer'] = Quantinizer(hp_Dict['Sound']['Quantinized_Pitch_Dim'])
+            previous_Channels += hp_Dict['Sound']['Quantinized_Pitch_Dim']
         self.layer_Dict['Pre_LSTM'] = torch.nn.LSTM(
-            input_size= hp_Dict['Content_Encoder']['LSTM']['Sizes'] * 2  + hp_Dict['Style_Encoder']['Embedding_Size'],
+            input_size= previous_Channels,
             hidden_size= hp_Dict['Decoder']['Pre_LSTM']['Sizes'],
             num_layers= hp_Dict['Decoder']['Pre_LSTM']['Stacks'],
             bias= True,
@@ -106,10 +111,10 @@ class Decoder(torch.nn.Module):
                 w_init_gain= 'relu'
                 ))
 
-            if hp_Dict['Decoder']['Conv']['GroupNorm']['Use']:
+            if hp_Dict['Decoder']['Conv']['Use_GroupNorm']:
                 # AutoVC uses small batch size(it is 2 in paper). To normalization performance, I replace BN to GN.
                 self.layer_Dict['Conv'].add_module('GroupNorm_{}'.format(index), torch.nn.GroupNorm(
-                    num_groups= hp_Dict['Decoder']['Conv']['GroupNorm']['Num_Groups'],
+                    num_groups= channels // 16,
                     num_channels= channels
                     ))
             else:
@@ -141,23 +146,31 @@ class Decoder(torch.nn.Module):
             )
         self.layer_Dict['Postnet'] = Postnet()
 
-    def forward(self, contents, styles):
+    def forward(self, contents, styles, pitches):
         '''
         contents: [Batch, Enc_dim, Time]
         styles: [Batch, Style_dim]
+        pitches: [Batch, Time]
         '''
         self.layer_Dict['Pre_LSTM'].flatten_parameters()
-        self.layer_Dict['Post_LSTM'].flatten_parameters()
+        if hp_Dict['Decoder']['Post_LSTM']['Stacks']:
+            self.layer_Dict['Post_LSTM'].flatten_parameters()
 
         x = torch.cat([     # [Batch, Enc_dim + Style_dim, Time]
             contents,
             styles.unsqueeze(2).expand(-1, -1, contents.size(2))
             ], dim= 1)
-        x, _ = self.layer_Dict['Pre_LSTM'](x.transpose(2, 1))   # [Batch, Time, Pre_LSTM_dim]
-        x = self.layer_Dict['Conv'](x.transpose(2, 1))  # [Batch, Conv_dim, Time]
+        if hp_Dict['Decoder']['Use_Pitch']:
+            x = torch.cat([ # [Batch, Enc_dim + Style_dim + Pitch_dim, Time]
+                x,
+                self.layer_Dict['Pitch_Quantinizer'](pitches).transpose(2, 1)
+                ], dim= 1)
+
+        x = self.layer_Dict['Pre_LSTM'](x.transpose(2, 1))[0].transpose(2, 1)   # [Batch, Pre_LSTM_dim, Time]
+        x = self.layer_Dict['Conv'](x)  # [Batch, Conv_dim, Time]
         if hp_Dict['Decoder']['Post_LSTM']['Stacks'] > 0:
-            x, _ = self.layer_Dict['Post_LSTM'](x.transpose(2, 1))   # [Batch, Time, Post_LSTM_dim]
-        pre_Mels = self.layer_Dict['Linear'](x).transpose(2, 1)    # [Batch, Mel_dim, Time]
+            x = self.layer_Dict['Post_LSTM'](x.transpose(2, 1))[0].transpose(2, 1)   # [Batch, Post_LSTM_dim, Time]
+        pre_Mels = self.layer_Dict['Linear'](x.transpose(2, 1)).transpose(2, 1)    # [Batch, Mel_dim, Time]
         post_Mels = self.layer_Dict['Postnet'](mels= pre_Mels)  # [Batch, Mel_dim, Time]
 
         return pre_Mels, post_Mels
@@ -181,10 +194,10 @@ class Postnet(torch.nn.Module):
                 bias= False,
                 w_init_gain= hp_Dict['Postnet']['Activation'].lower()
                 ))
-            if hp_Dict['Postnet']['GroupNorm']['Use']:
+            if hp_Dict['Postnet']['Use_GroupNorm']:
                 # AutoVC uses small batch size(it is 2 in paper). To normalization performance, I replace BN to GN.
                 self.layer.add_module('GroupNorm_{}'.format(index), torch.nn.GroupNorm(
-                    num_groups= hp_Dict['Postnet']['GroupNorm']['Num_Groups'],
+                    num_groups= channels // 16,
                     num_channels= channels
                     ))
             else:
@@ -197,7 +210,7 @@ class Postnet(torch.nn.Module):
                 elif hp_Dict['Postnet']['Activation'].lower() == 'tanh':
                     self.layer.add_module('Tanh_{}'.format(index), torch.nn.Tanh())
                 else:
-                    raise Exception('activation type must be one of \'relu\' or \'tanh\'.)
+                    raise Exception('activation type must be one of \'relu\' or \'tanh\'.')
             previous_Channels = channels
 
     def forward(self, mels):
@@ -232,6 +245,16 @@ class Linear(torch.nn.Linear):
             )
         if not self.bias is None:
             torch.nn.init.zeros_(self.bias)
+
+class Quantinizer(torch.nn.Module):
+    def __init__(self, size):
+        super(Quantinizer, self).__init__()
+        self.size = size
+
+    def forward(self, x):
+        x = (x * self.size * 0.999).long()
+
+        return torch.nn.functional.one_hot(x, num_classes= self.size).float()
 
 if __name__ == "__main__":
     style_Encoder = Style_Encoder(

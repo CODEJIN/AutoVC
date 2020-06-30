@@ -7,14 +7,16 @@ Sound:
     Mel_F_Min: 125
     Mel_F_Max: 7600
     Max_Abs_Mel: 4
+    Confidence_Threshold: 0.6
+    Gaussian_Smoothing_Sigma: 0.0
+    Quantinized_Pitch_Dim: 256
+
 
 Content_Encoder:
     Conv:
         Channels: [512, 512, 512]
         Kernel_Sizes: [5, 5, 5]
-        GroupNorm:
-            Use: true
-            Num_Groups: 32
+        Use_GroupNorm: true
     LSTM:
         Sizes: 16
         Stacks: 2
@@ -32,6 +34,7 @@ Style_Encoder:
     Checkpoint_Path: './Style_Encoder/Example_Results/Checkpoint/S_100000.pkl'
     
 Decoder:
+    Use_Pitch: true #F0-AutoVC
     # In paper here is pre conv, but there is no conv in official code.
     Pre_LSTM:
         Sizes: 512 # In official code 512, paper 1024
@@ -39,9 +42,7 @@ Decoder:
     Conv:
         Channels: [] # Vanilla: [512, 512, 512]
         Kernel_Sizes:  [] # Vanilla: [5, 5, 5]
-        GroupNorm:
-            Use: true
-            Num_Groups: 32
+        Use_GroupNorm: true
         Dropout: 0.0    # This part is customized.
     Post_LSTM:
         Sizes: 1024
@@ -51,9 +52,7 @@ Postnet:
     Channels: [512, 512, 512, 512]
     Kernel_Sizes: [5, 5, 5, 5]
     Activation: 'relu'  # Vanilla: 'tanh'
-    GroupNorm:
-        Use: true
-        Num_Groups: 32
+    Use_GroupNorm: true
 
 WaveNet:
     Residual_Channels: 64
@@ -69,12 +68,14 @@ WaveNet:
         Pad: 2
     # Checkpoint_Path: './PWGAN/Example_Results/Checkpoint/S_400000.pkl'  # If nothing, null
     # Checkpoint_Path: "D:/GoogleDrive/Colab_Test/PWGAN_Torch/SR24K.Results/Checkpoint/S_85000.pkl"
-    Checkpoint_Path: './PWGAN/S_300000.pkl'
+    #Checkpoint_Path: './PWGAN/S_300000.pkl'
+    Checkpoint_Path: 'D:/PWGAN.Results/SR24K.Results/Checkpoint/S_177000.pkl'
 
 Train:
     Use_Pattern_Cache: true
     Train_Pattern:
-        Path: '../Pattern/SS.SR24K.Pattern/Train'
+        #Path: '../Pattern/SS.SR24K.Pattern/Train'
+        Path: 'C:/Pattern/SS.SR24K.VCTK106.Pattern/Train'
         Metadata_File: 'METADATA.PICKLE'   # 'METADATA.PICKLE'
         Mel_Length: # This must be a multiple of Content_Encoder/Frequency
             Min: 64
@@ -86,12 +87,13 @@ Train:
             Min: 0.35
             Max: 1.0
         Use_Style_from_Content_Mel: false
-        Accumulated_Dataset_Epoch: 100   # This is to prevent slow down from torch.utils.data.DataLoader when speaker is small.        
+        Accumulated_Dataset_Epoch: 1   # This is to prevent slow down from torch.utils.data.DataLoader when speaker is small.        
     Eval_Pattern:
-        Path: '../Pattern/SS.SR24K.Pattern/Eval'
+        # Path: '../Pattern/SS.SR24K.Pattern/Eval'
+        Path: 'C:/Pattern/SS.SR24K.VCTK106.Pattern/Eval'
         Metadata_File: 'METADATA.PICKLE'
     Num_Workers: 2
-    Batch_Size: 32
+    Batch_Size: 2
     Loss_Weight:
         Pre_Mel_L1: 0.0
         Post_Mel_L1: 0.0
@@ -113,10 +115,13 @@ Train:
     Logging_Interval: 100
     Evaluation_Interval: 1000
     Inference_Interval: 5000
-    Initial_Inference: false
+    Initial_Inference: true
 
-Inference_Path: './SR24K.Results/Inference'
-Checkpoint_Path: './SR24K.Results/Checkpoint'
-Log_Path: './SR24K.Results/Log'
+# Inference_Path: './SR24K.Results.VCTK/Inference'
+# Checkpoint_Path: './SR24K.Results.VCTK/Checkpoint'
+# Log_Path: './SR24K.Results.VCTK/Log'
+Inference_Path: 'D:/AutoVC.Results/SR24K.Results.VCTKLibri/Inference'
+Checkpoint_Path: 'D:/AutoVC.Results/SR24K.Results.VCTKLibri/Checkpoint'
+Log_Path: 'D:/AutoVC.Results/SR24K.Results.VCTKLibri/Log'
 Use_Mixed_Precision: true  # apex is required.
 Device: '0'

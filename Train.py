@@ -137,39 +137,40 @@ class Trainer:
         logging.info(self.model_Dict['Decoder'])
 
 
-    def Train_Step(self, content_Mels, content_Style_Mels, style_Mels):
+    def Train_Step(self, contents, styles, pitches):
         loss_Dict = {}
+        
+        contents = contents.to(device)
+        styles = styles.to(device)
+        pitches = pitches.to(device)
 
-        content_Mels = content_Mels.to(device)
-        content_Style_Mels = content_Style_Mels.to(device)
-        style_Mels = style_Mels.to(device)
+        targets = contents
         
         with torch.no_grad():
-            content_Styles = self.model_Dict['Style_Encoder'](content_Style_Mels)
-            styles = self.model_Dict['Style_Encoder'](style_Mels)
-            content_Styles = Normalize(content_Styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
+            styles = self.model_Dict['Style_Encoder'](styles)
             styles = Normalize(styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
         
         contents = self.model_Dict['Content_Encoder'](
-            mels= content_Mels,
-            styles= content_Styles
+            mels= contents,
+            styles= styles
             )
         pre_Mels, post_Mels = self.model_Dict['Decoder'](
             contents= contents,
-            styles= styles
+            styles= styles,
+            pitches= pitches
             )
         
         reconstructed_Contents = self.model_Dict['Content_Encoder'](
             mels= post_Mels,
-            styles= content_Styles
+            styles= styles
             )
 
         loss_Dict['Pre_Reconstructed'] = \
-            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L1'] * self.criterion_Dict['MAE'](pre_Mels, content_Mels) + \
-            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L2'] * self.criterion_Dict['MSE'](pre_Mels, content_Mels)
+            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L1'] * self.criterion_Dict['MAE'](pre_Mels, targets) + \
+            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L2'] * self.criterion_Dict['MSE'](pre_Mels, targets)
         loss_Dict['Post_Reconstructed'] = \
-            hp_Dict['Train']['Loss_Weight']['Post_Mel_L1'] * self.criterion_Dict['MAE'](post_Mels, content_Mels) + \
-            hp_Dict['Train']['Loss_Weight']['Post_Mel_L2'] * self.criterion_Dict['MSE'](post_Mels, content_Mels)
+            hp_Dict['Train']['Loss_Weight']['Post_Mel_L1'] * self.criterion_Dict['MAE'](post_Mels, targets) + \
+            hp_Dict['Train']['Loss_Weight']['Post_Mel_L2'] * self.criterion_Dict['MSE'](post_Mels, targets)
         loss_Dict['Content'] = \
             hp_Dict['Train']['Loss_Weight']['Content_L1'] * self.criterion_Dict['MAE'](reconstructed_Contents, contents) + \
             hp_Dict['Train']['Loss_Weight']['Content_L2'] * self.criterion_Dict['MSE'](reconstructed_Contents, contents)
@@ -190,8 +191,8 @@ class Trainer:
             self.loss_Dict['Train'][tag] += loss
 
     def Train_Epoch(self):
-        for content_Mels, content_Style_Mels, style_Mels in self.dataLoader_Dict['Train']:
-            self.Train_Step(content_Mels, content_Style_Mels, style_Mels)
+        for contents, styles, pitches in self.dataLoader_Dict['Train']:
+            self.Train_Step(contents, styles, pitches)
             
             if self.steps % hp_Dict['Train']['Checkpoint_Save_Interval'] == 0:
                 self.Save_Checkpoint()
@@ -216,38 +217,39 @@ class Trainer:
         self.epochs += hp_Dict['Train']['Train_Pattern']['Accumulated_Dataset_Epoch']
 
     @torch.no_grad()    
-    def Evaluation_Step(self, content_Mels, content_Style_Mels, style_Mels):
+    def Evaluation_Step(self, contents, styles, pitches):
         loss_Dict = {}
 
-        content_Mels = content_Mels.to(device)
-        content_Style_Mels = content_Style_Mels.to(device)
-        style_Mels = style_Mels.to(device)
-        
-        content_Styles = self.model_Dict['Style_Encoder'](content_Style_Mels)
-        styles = self.model_Dict['Style_Encoder'](style_Mels)
-        content_Styles = Normalize(content_Styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
-        styles = Normalize(styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
+        contents = contents.to(device)
+        styles = styles.to(device)
+        pitches = pitches.to(device)
 
+        targets = contents
+        
+        styles = self.model_Dict['Style_Encoder'](styles)
+        styles = Normalize(styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
+        
         contents = self.model_Dict['Content_Encoder'](
-            mels= content_Mels,
-            styles= content_Styles
+            mels= contents,
+            styles= styles
             )
         pre_Mels, post_Mels = self.model_Dict['Decoder'](
             contents= contents,
+            styles= styles,
+            pitches= pitches
+            )
+        
+        reconstructed_Contents = self.model_Dict['Content_Encoder'](
+            mels= post_Mels,
             styles= styles
             )
 
-        reconstructed_Contents = self.model_Dict['Content_Encoder'](
-            mels= post_Mels,
-            styles= content_Styles
-            )
-
         loss_Dict['Pre_Reconstructed'] = \
-            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L1'] * self.criterion_Dict['MAE'](pre_Mels, content_Mels) + \
-            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L2'] * self.criterion_Dict['MSE'](pre_Mels, content_Mels)
+            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L1'] * self.criterion_Dict['MAE'](pre_Mels, targets) + \
+            hp_Dict['Train']['Loss_Weight']['Pre_Mel_L2'] * self.criterion_Dict['MSE'](pre_Mels, targets)
         loss_Dict['Post_Reconstructed'] = \
-            hp_Dict['Train']['Loss_Weight']['Post_Mel_L1'] * self.criterion_Dict['MAE'](post_Mels, content_Mels) + \
-            hp_Dict['Train']['Loss_Weight']['Post_Mel_L2'] * self.criterion_Dict['MSE'](post_Mels, content_Mels)
+            hp_Dict['Train']['Loss_Weight']['Post_Mel_L1'] * self.criterion_Dict['MAE'](post_Mels, targets) + \
+            hp_Dict['Train']['Loss_Weight']['Post_Mel_L2'] * self.criterion_Dict['MSE'](post_Mels, targets)
         loss_Dict['Content'] = \
             hp_Dict['Train']['Loss_Weight']['Content_L1'] * self.criterion_Dict['MAE'](reconstructed_Contents, contents) + \
             hp_Dict['Train']['Loss_Weight']['Content_L2'] * self.criterion_Dict['MSE'](reconstructed_Contents, contents)
@@ -262,12 +264,12 @@ class Trainer:
         for model in self.model_Dict.values():
             model.eval()
 
-        for step, (content_Mels, content_Style_Mels, style_Mels) in tqdm(
+        for step, (contents, styles, pitches) in tqdm(
             enumerate(self.dataLoader_Dict['Dev'], 1),
             desc='[Evaluation]',
             total= math.ceil(len(self.dataLoader_Dict['Dev'].dataset) / hp_Dict['Train']['Batch_Size'])
             ):
-            self.Evaluation_Step(content_Mels, content_Style_Mels, style_Mels)
+            self.Evaluation_Step(contents, styles, pitches)
 
         self.loss_Dict['Evaluation'] = {
             tag: loss / step
@@ -281,52 +283,56 @@ class Trainer:
 
 
     @torch.no_grad()
-    def Inference_Step(self, content_Mels, content_Style_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels, start_Index= 0, tag_Step= False, tag_Index= False):
-        content_Mels = content_Mels.to(device)
-        content_Style_Mels = content_Style_Mels.to(device)
-        style_Mels = style_Mels.to(device)
-        
-        content_Styles = self.model_Dict['Style_Encoder'](content_Style_Mels)
-        styles = self.model_Dict['Style_Encoder'](style_Mels)
-        content_Styles = Normalize(content_Styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
-        styles = Normalize(styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
+    def Inference_Step(self, contents, content_Styles, target_Styles, pitches, lengths, source_Labels, target_Labels, start_Index= 0, tag_Step= False, tag_Index= False):
+        contents = contents.to(device)
+        content_Styles = content_Styles.to(device)
+        target_Styles = target_Styles.to(device)
+        pitches = pitches.to(device)
 
+        sources = contents
+        
+        content_Styles = self.model_Dict['Style_Encoder'](content_Styles)
+        content_Styles = Normalize(content_Styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
+        target_Styles = self.model_Dict['Style_Encoder'](target_Styles)
+        target_Styles = Normalize(target_Styles, samples= hp_Dict['Style_Encoder']['Inference']['Samples'])
+        
         contents = self.model_Dict['Content_Encoder'](
-            mels= content_Mels,
+            mels= contents,
             styles= content_Styles
             )
-        _, post_Mels = self.model_Dict['Decoder'](
+        _, mels = self.model_Dict['Decoder'](
             contents= contents,
-            styles= styles
+            styles= target_Styles,
+            pitches= pitches
             )
 
         os.makedirs(os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps)).replace("\\", "/"), exist_ok= True)
 
-        for index, (content_Mel, post_Mel, content_Mel_Length, content_Label, style_Label) in enumerate(zip(
-            content_Mels.cpu().numpy(),
-            post_Mels.cpu().numpy(),
-            content_Mel_Lengths,
-            content_Labels,
-            style_Labels
+        for index, (source, mel, length, source_Label, target_Label) in enumerate(zip(
+            sources.cpu().numpy(),
+            mels.cpu().numpy(),
+            lengths,
+            source_Labels,
+            target_Labels
             )):
             new_Figure = plt.figure(figsize=(16, 8 * 2), dpi=100)
             plt.subplot(311)
-            plt.imshow(content_Mel[:, :content_Mel_Length], aspect='auto', origin='lower')
-            plt.title('Original    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, content_Label, style_Label))            
+            plt.imshow(source[:, :length], aspect='auto', origin='lower')
+            plt.title('Original    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, source_Label, target_Label))            
             plt.colorbar()
             plt.subplot(312)
-            plt.imshow(post_Mel[:, :content_Mel_Length], aspect='auto', origin='lower')
-            plt.title('Conversion    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, content_Label, style_Label))
+            plt.imshow(mel[:, :length], aspect='auto', origin='lower')
+            plt.title('Conversion    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, source_Label, target_Label))
             plt.colorbar()
             plt.subplot(313)
-            plt.imshow(content_Mel[:, :content_Mel_Length] - post_Mel[:, :content_Mel_Length], aspect='auto', origin='lower')
-            plt.title('Difference    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, content_Label, style_Label))
+            plt.imshow(source[:, :length] - mel[:, :length], aspect='auto', origin='lower')
+            plt.title('Difference    Index: {}    Original: {}    ->    Conversion: {}'.format(index + start_Index, source_Label, target_Label))
             plt.colorbar()
             plt.tight_layout()
             file = '{}C_{}.S_{}{}.PNG'.format(
                 'Step-{}.'.format(self.steps) if tag_Step else '',
-                content_Label,
-                style_Label,
+                source_Label,
+                target_Label,
                 '.IDX_{}'.format(index + start_Index) if tag_Index else ''
                 )
             plt.savefig(
@@ -335,50 +341,50 @@ class Trainer:
             plt.close(new_Figure)
 
         if 'PWGAN' in self.model_Dict.keys():
-            noises = torch.randn(post_Mels.size(0), post_Mels.size(2) * hp_Dict['Sound']['Frame_Shift']).to(device)                
-            post_Mels = torch.nn.functional.pad(
-                post_Mels,
+            noises = torch.randn(mels.size(0), mels.size(2) * hp_Dict['Sound']['Frame_Shift']).to(device)                
+            mels = torch.nn.functional.pad(
+                mels,
                 pad= (hp_Dict['WaveNet']['Upsample']['Pad'], hp_Dict['WaveNet']['Upsample']['Pad']),
                 mode= 'replicate'
                 )
-            content_Mels = torch.nn.functional.pad(
-                content_Mels,
+            sources = torch.nn.functional.pad(
+                sources,
                 pad= (hp_Dict['WaveNet']['Upsample']['Pad'], hp_Dict['WaveNet']['Upsample']['Pad']),
                 mode= 'replicate'
                 )
 
-            for index, (audio, mel_Length, content_Label, style_Label) in enumerate(zip(
-                self.model_Dict['PWGAN'](noises, post_Mels).cpu().numpy(),
-                content_Mel_Lengths,
-                content_Labels,
-                style_Labels
+            for index, (audio, length, source_Label, target_Label) in enumerate(zip(
+                self.model_Dict['PWGAN'](noises, mels).cpu().numpy(),
+                lengths,
+                source_Labels,
+                target_Labels
                 )):
                 file = '{}C_{}.S_{}{}.Conversion.WAV'.format(
                     'Step-{}.'.format(self.steps) if tag_Step else '',
-                    content_Label,
-                    style_Label,
+                    source_Label,
+                    target_Label,
                     '.IDX_{}'.format(index + start_Index) if tag_Index else ''
                     )
                 wavfile.write(
                     filename= os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), file).replace("\\", "/"),
-                    data= (audio[:mel_Length * hp_Dict['Sound']['Frame_Shift']] * 32767.5).astype(np.int16),
+                    data= (audio[:length * hp_Dict['Sound']['Frame_Shift']] * 32767.5).astype(np.int16),
                     rate= hp_Dict['Sound']['Sample_Rate']
                     )
-            for index, (audio, mel_Length, content_Label, style_Label) in enumerate(zip(
-                self.model_Dict['PWGAN'](noises, content_Mels).cpu().numpy(),
-                content_Mel_Lengths,
-                content_Labels,
-                style_Labels
+            for index, (audio, length, source_Label, target_Label) in enumerate(zip(
+                self.model_Dict['PWGAN'](noises, sources).cpu().numpy(),
+                lengths,
+                source_Labels,
+                target_Labels
                 )):
                 file = '{}C_{}.S_{}{}.Original.WAV'.format(
                     'Step-{}.'.format(self.steps) if tag_Step else '',
-                    content_Label,
-                    style_Label,
+                    source_Label,
+                    target_Label,
                     '.IDX_{}'.format(index + start_Index) if tag_Index else ''
                     )
                 wavfile.write(
                     filename= os.path.join(hp_Dict['Inference_Path'], 'Step-{}'.format(self.steps), file).replace("\\", "/"),
-                    data= (audio[:mel_Length * hp_Dict['Sound']['Frame_Shift']] * 32767.5).astype(np.int16),
+                    data= (audio[:length * hp_Dict['Sound']['Frame_Shift']] * 32767.5).astype(np.int16),
                     rate= hp_Dict['Sound']['Sample_Rate']
                     )
 
@@ -388,12 +394,12 @@ class Trainer:
         for model in self.model_Dict.values():
             model.eval()
 
-        for step, (content_Mels, content_Style_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels) in tqdm(
+        for step, (contents, content_Styles, target_Styles, pitches, lengths, source_Labels, target_Labels) in tqdm(
             enumerate(self.dataLoader_Dict['Inference']),
             desc='[Inference]',
             total= math.ceil(len(self.dataLoader_Dict['Inference'].dataset) / hp_Dict['Train']['Batch_Size'])
             ):
-            self.Inference_Step(content_Mels, content_Style_Mels, style_Mels, content_Mel_Lengths, content_Labels, style_Labels, start_Index= step * hp_Dict['Train']['Batch_Size'])
+            self.Inference_Step(contents, content_Styles, target_Styles, pitches, lengths, source_Labels, target_Labels, start_Index= step * hp_Dict['Train']['Batch_Size'])
 
         for model in self.model_Dict.values():
             model.train()
@@ -422,15 +428,18 @@ class Trainer:
         else:
             path = os.path.join(hp_Dict['Checkpoint_Path'], 'S_{}.pt'.format(self.steps).replace('\\', '/'))
 
-        state_Dict = torch.load(path, map_location= 'cpu')
-        self.model_Dict['Content_Encoder'].load_state_dict(state_Dict['Model']['Content_Encoder'])
-        self.model_Dict['Decoder'].load_state_dict(state_Dict['Model']['Decoder'])        
-        self.optimizer.load_state_dict(state_Dict['Optimizer'])
-        self.scheduler.load_state_dict(state_Dict['Scheduler'])
-        self.steps = state_Dict['Steps']
-        self.epochs = state_Dict['Epochs']
+        try:
+            state_Dict = torch.load(path, map_location= 'cpu')
+            self.model_Dict['Content_Encoder'].load_state_dict(state_Dict['Model']['Content_Encoder'])
+            self.model_Dict['Decoder'].load_state_dict(state_Dict['Model']['Decoder'])        
+            self.optimizer.load_state_dict(state_Dict['Optimizer'])
+            self.scheduler.load_state_dict(state_Dict['Scheduler'])
+            self.steps = state_Dict['Steps']
+            self.epochs = state_Dict['Epochs']
 
-        logging.info('Checkpoint loaded at {} steps.'.format(self.steps))
+            logging.info('Checkpoint loaded at {} steps.'.format(self.steps))
+        except:
+            return
 
     def Save_Checkpoint(self):
         os.makedirs(hp_Dict['Checkpoint_Path'], exist_ok= True)
@@ -487,7 +496,7 @@ class Trainer:
             yaml.dump(hp_Dict, open(hp_Path, 'w'))
 
         if hp_Dict['Train']['Initial_Inference']:
-            self.Evaluation_Epoch()
+            # self.Evaluation_Epoch()
             self.Inference_Epoch()
 
         for model in self.model_Dict.values():
