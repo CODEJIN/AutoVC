@@ -15,7 +15,7 @@ Content_Encoder:
     LSTM:
         Sizes: 128
         Stacks: 2
-    Frequency: 32
+    Frequency: 64
 
 Style_Encoder:
     Embedding_Size: 256
@@ -58,23 +58,22 @@ WaveNet:
         Scales: [4, 4, 4, 4]
         Pad: 2
     # Checkpoint_Path: './PWGAN/Example_Results/Checkpoint/S_400000.pkl'  # If nothing, null
-    # Checkpoint_Path: 'D:\GoogleDrive\Colab_Test\PWGAN_Torch\Results\Checkpoint\S_432000.pkl'
-    Checkpoint_Path: null
-
+    # Checkpoint_Path: "D:/GoogleDrive/Colab_Test/PWGAN_Torch/SR24K.Results/Checkpoint/S_85000.pkl"
+    Checkpoint_Path: './PWGAN/S_300000.pkl'
 
 Train:
     Use_Pattern_Cache: true
     Train_Pattern:
-        Path: 'C:/Pattern/AutoVC.SR24K.Pattern/Train'
+        Path: '../Pattern/AutoVC.SR24K.Pattern/Train'
         Metadata_File: 'METADATA.PICKLE'   # 'METADATA.PICKLE'
-        Mel_Length: 128     # This must be a multiple of Content_Encoder/Frequency
+        Mel_Length: 512     # This must be a multiple of Content_Encoder/Frequency
         Use_Style_from_Content_Mel: false
         Accumulated_Dataset_Epoch: 100   # This is to prevent slow down from torch.utils.data.DataLoader when speaker is small.        
     Eval_Pattern:
-        Path: 'C:/Pattern/AutoVC.SR24K.Pattern/Eval'
+        Path: '../Pattern/AutoVC.SR24K.Pattern/Eval'
         Metadata_File: 'METADATA.PICKLE'
     Num_Workers: 2
-    Batch_Size: 2
+    Batch_Size: 32
     Loss_Weight:
         Pre_Mel_L1: 0.0
         Post_Mel_L1: 0.0
@@ -96,9 +95,10 @@ Train:
     Logging_Interval: 100
     Evaluation_Interval: 1000
     Inference_Interval: 5000
-    Initial_Inference: true
+    Initial_Inference: false
 
-Inference_Path: 'D:/AutoVC.SR24K.Results/Inference'
-Checkpoint_Path: 'D:/AutoVC.SR24K.Results/Checkpoint'
-Log_Path: 'D:/AutoVC.SR24K.Results/Log'
-Device: '1'
+Inference_Path: './SR24K.Results/Inference'
+Checkpoint_Path: './SR24K.Results/Checkpoint'
+Log_Path: './SR24K.Results/Log'
+Use_Mixed_Precision: true  # apex is required.
+Device: '0'

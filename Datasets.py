@@ -3,7 +3,8 @@ import numpy as np
 import yaml, librosa, pickle, os
 from random import sample, shuffle
 from itertools import combinations
-from Pattern_Generator import Mel_Generate
+
+from Audio import Audio_Prep, Mel_Generate
 
 with open('Hyper_Parameter.yaml') as f:
     hp_Dict = yaml.load(f, Loader=yaml.Loader)
@@ -99,8 +100,28 @@ class Inference_Dataset(torch.utils.data.Dataset):
             return self.cache_Dict[idx]
         
         content_Label, content_Path, style_Label, style_Path = self.pattern_List[idx]
-        content_Mel = Mel_Generate(content_Path, 15)
-        style_Mel = Mel_Generate(style_Path, 15)
+        content_Mel = Mel_Generate(
+            audio= Audio_Prep(content_Path, hp_Dict['Sound']['Sample_Rate']),
+            sample_rate= hp_Dict['Sound']['Sample_Rate'],
+            num_frequency= hp_Dict['Sound']['Spectrogram_Dim'],
+            num_mel= hp_Dict['Sound']['Mel_Dim'],
+            window_length= hp_Dict['Sound']['Frame_Length'],
+            hop_length= hp_Dict['Sound']['Frame_Shift'],        
+            mel_fmin= hp_Dict['Sound']['Mel_F_Min'],
+            mel_fmax= hp_Dict['Sound']['Mel_F_Max'],
+            max_abs_value= hp_Dict['Sound']['Max_Abs_Mel']
+            )
+        style_Mel = Mel_Generate(
+            audio= Audio_Prep(style_Path, hp_Dict['Sound']['Sample_Rate']),
+            sample_rate= hp_Dict['Sound']['Sample_Rate'],
+            num_frequency= hp_Dict['Sound']['Spectrogram_Dim'],
+            num_mel= hp_Dict['Sound']['Mel_Dim'],
+            window_length= hp_Dict['Sound']['Frame_Length'],
+            hop_length= hp_Dict['Sound']['Frame_Shift'],        
+            mel_fmin= hp_Dict['Sound']['Mel_F_Min'],
+            mel_fmax= hp_Dict['Sound']['Mel_F_Max'],
+            max_abs_value= hp_Dict['Sound']['Max_Abs_Mel']
+            )
         pattern = content_Mel, style_Mel, content_Label, style_Label
 
         if hp_Dict['Train']['Use_Pattern_Cache']:

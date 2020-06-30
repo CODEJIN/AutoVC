@@ -21,7 +21,6 @@ def Mel_Generate(
     pre_emphasis= 0.97,    
     mel_fmin= 125,
     mel_fmax= 7600,
-    ref_level_db= 20, 
     min_level_db= -100,   
     max_abs_value= 4.0
     ):
@@ -38,7 +37,7 @@ def Mel_Generate(
     mel_filter = librosa.filters.mel(sr= sample_rate, n_fft= n_fft, n_mels= num_mel, fmin= mel_fmin, fmax= mel_fmax)
     magnitude = mel_filter @ magnitude
     
-    db = 20 * np.log10(magnitude + 1e-7) - ref_level_db
+    db = 20 * np.log10(magnitude + 1e-7)
     mel = np.clip(
         (2 * max_abs_value) * (db - min_level_db)/-min_level_db - max_abs_value,
         -max_abs_value,

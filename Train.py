@@ -122,6 +122,16 @@ class Trainer:
             gamma= hp_Dict['Train']['Learning_Rate']['Decay_Rate'],
             )
 
+        if hp_Dict['Use_Mixed_Precision']:
+            try:
+                from apex import amp
+                (self.model_Dict['Content_Encoder'], self.model_Dict['Style_Encoder'], self.model_Dict['Decoder']), self.optimizer = amp.initialize(
+                    models= [self.model_Dict['Content_Encoder'], self.model_Dict['Style_Encoder'], self.model_Dict['Decoder']],
+                    optimizers=self.optimizer
+                    )
+            except:
+                logging.info('There is no apex modules in the environment. Mixed precision does not work.')
+
         logging.info(self.model_Dict['Content_Encoder'])
         logging.info(self.model_Dict['Style_Encoder'])
         logging.info(self.model_Dict['Decoder'])
@@ -448,6 +458,16 @@ class Trainer:
 
     def PWGAN_Load_Checkpoint(self):
         self.model_Dict['PWGAN'] = PWGAN().to(device)
+
+        if hp_Dict['Use_Mixed_Precision']:
+            try:
+                from apex import amp
+                self.model_Dict['PWGAN'] = amp.initialize(
+                    models=self.model_Dict['PWGAN']
+                    )
+            except:
+                pass
+
         state_Dict = torch.load(
             hp_Dict['WaveNet']['Checkpoint_Path'],
             map_location= 'cpu'
